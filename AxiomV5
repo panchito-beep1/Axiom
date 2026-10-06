@@ -16,7 +16,7 @@ print([[
    YMM   ""`,m"       "Mm,MMM  "YMMMMMP" MMM  M'  "MMM
 ]])
 
--- Axiom V5 Israeli.V3.0 -- FULL FEATURE EDITION
+-- Axiom V5 Israeli.V3.0
 -- Includes: SetCallback everywhere, tooltips, sub-tabs, global search,
 -- save/load state, safe callbacks, slider text input, combo keybinds, enable/disable
 
@@ -3448,364 +3448,1038 @@ function RGui:CreateWatermark(text, options)
     return wmObj
 end
 
-function RGui:CreateKeySystem(config)
-    local theme = self._theme
-    local services = config.Services or {}
-    local description = config.Description or "Enter your key to continue."
-    local title = config.Title or "Key System"
-    local onSuccess = config.Callback or function() end
+-- ============================================================
+--  RGui.Validators  –  drop-in validation factory functions
+--
+--  Usage example:
+--    Services = {
+--        ["GamePass VIP"] = RGui.Validators.GamePass(123456, {
+--            Tier = "VIP", Premium = true, PromptIfMissing = true
+--        }),
+--        ["Developer"]    = RGui.Validators.UserId({111, 222}, {
+--            Tier = "Developer", Premium = false
+--        }),
+--        ["Secret Key"]   = {
+--            Validate = function(key) return key == "MY_SECRET" end,
+--            Tier     = "Admin",
+--            Premium  = true,
+--        },
+--    }
+-- ============================================================
+RGui.Validators = {}
 
-    local serviceNames = {}
-    for name, data in pairs(services) do table.insert(serviceNames, name) end
-    if #serviceNames == 0 then
-        serviceNames = {"No service available"}
-        services = {["No service available"] = {Validate = function() return true end}}
+--[[
+    GamePass ownership check  (async – uses HTTP internally)
+
+    passId  : number   – the GamePass asset ID
+    options : table    – {
+        Tier            = string  -- tier granted on success       (default "VIP")
+        Premium         = bool    -- is this a premium gate?       (default true)
+        PromptIfMissing = bool    -- open purchase dialog if unowned (default false)
+    }
+--]]
+function RGui.Validators.GamePass(passId, options)
+    options = options or {}
+    return {
+        Tier            = options.Tier            or "VIP",
+        Premium         = options.Premium         ~= false,
+        IsAsync         = true,
+        PromptIfMissing = options.PromptIfMissing or false,
+        Validate = function(_key)
+            local MPS    = game:GetService("MarketplaceService")
+            local player = game:GetService("Players").LocalPlayer
+            local ok, owns = pcall(MPS.UserOwnsGamePassAsync, MPS, player.UserId, passId)
+            if ok and owns then return true end
+            if options.PromptIfMissing then
+                pcall(MPS.PromptGamePassPurchase, MPS, player, passId)
+            end
+            return false
+        end,
+    }
+end
+
+--[[
+    DevProduct purchase prompt
+
+    Prompts the purchase dialog; always returns false so the key system
+    stays open.  Call  keySys:Unlock(tier, isPremium)  from your
+    server-side ProcessReceipt handler after the sale is confirmed.
+
+    productId : number
+    options   : table  – { Tier, Premium, OnPrompt }
+--]]
+function RGui.Validators.DevProduct(productId, options)
+    options = options or {}
+    return {
+        Tier    = options.Tier    or "VIP",
+        Premium = options.Premium ~= false,
+        IsAsync = false,
+        Validate = function(_key)
+            local MPS    = game:GetService("MarketplaceService")
+            local player = game:GetService("Players").LocalPlayer
+            pcall(MPS.PromptProductPurchase, MPS, player, productId)
+            if options.OnPrompt then pcall(options.OnPrompt) end
+            return false  -- grant access via keySys:Unlock() from server receipt
+        end,
+    }
+end
+
+--[[
+    UserId whitelist validator
+
+    ids     : { number, ... }  – allowed UserIds
+    options : { Tier, Premium }
+--]]
+function RGui.Validators.UserId(ids, options)
+    options = options or {}
+    local set = {}
+    for _, id in ipairs(ids) do set[id] = true end
+    return {
+        Tier    = options.Tier    or "Developer",
+        Premium = options.Premium or false,
+        IsAsync = false,
+        Validate = function(_key)
+            return set[game:GetService("Players").LocalPlayer.UserId] == true
+        end,
+    }
+end
+
+--[[
+    Username whitelist validator  (case-insensitive)
+
+    names   : { string, ... }  – allowed display names
+    options : { Tier, Premium }
+--]]
+function RGui.Validators.Username(names, options)
+    options = options or {}
+    local set = {}
+    for _, n in ipairs(names) do set[n:lower()] = true end
+    return {
+        Tier    = options.Tier    or "Developer",
+        Premium = options.Premium or false,
+        IsAsync = false,
+        Validate = function(_key)
+            return set[game:GetService("Players").LocalPlayer.Name:lower()] == true
+        end,
+    }
+end
+
+--[[
+    leaderstats currency threshold validator
+
+    attr    : string  – stat name inside leaderstats  (e.g. "Coins")
+    amount  : number  – minimum value required
+    options : { Tier, Premium }
+--]]
+function RGui.Validators.Currency(attr, amount, options)
+    options = options or {}
+    return {
+        Tier    = options.Tier    or "VIP",
+        Premium = options.Premium ~= false,
+        IsAsync = false,
+        Validate = function(_key)
+            local player = game:GetService("Players").LocalPlayer
+            local ls     = player:FindFirstChild("leaderstats")
+            if not ls then return false end
+            local stat = ls:FindFirstChild(attr)
+            return stat ~= nil and stat.Value >= amount
+        end,
+    }
+end
+
+-- ============================================================
+--  CreateKeySystem config reference
+--
+--  config = {
+--    Title        = "Key System",        -- window title
+--    ScriptTitle  = "My Script",         -- accent label
+--    Icon         = "rbxassetid://...",  -- optional icon image
+--    Description  = "Enter key...",      -- right-panel description
+--    Services     = { ... },             -- see RGui.Validators above
+--
+--    MaxRetries    = 3,        -- wrong-attempt limit  (0 = unlimited)
+--    RetryCooldown = 15,       -- lockout duration in seconds
+--    OnLockout     = function() end,
+--
+--    SaveKey = true,           -- persist validated key to file
+--    SaveId  = "my_script_v1", -- save slot name (creates <SaveId>.txt)
+--
+--    Callback = function(serviceName, key, tier, isPremium)
+--        -- tier      : string  e.g. "VIP", "Developer", "Free"
+--        -- isPremium : bool    true if service.Premium == true
+--        if isPremium then
+--            print("premium user")
+--        else
+--            return  -- deny non-premium
+--        end
+--    end,
+--  }
+-- ============================================================
+function RGui:CreateKeySystem(config)
+    -- guard: destroy any existing key system before creating a new one
+    if self._keySystemGui then
+        pcall(function() self._keySystemGui:Destroy() end)
+        self._keySystemGui = nil
     end
 
-    local keyScreen = Instance.new("ScreenGui")
-    keyScreen.Name = "RGui_KeySystem"
-    keyScreen.ResetOnSpawn = false
-    keyScreen.Parent = CoreGui
+    -- ── configuration ────────────────────────────────────────────
+    local theme      = self._theme
+    local services   = config.Services    or {}
+    local desc       = config.Description or "Enter your key to continue."
+    local title      = config.Title       or "Key System"
+    local onSuccess  = config.Callback    or function() end
+    local maxRetries = config.MaxRetries  or 0     -- 0 = unlimited
+    local retryCD    = config.RetryCooldown or 15
+    local onLockout  = config.OnLockout
+    local saveKey    = config.SaveKey     or false
+    local saveId     = (config.SaveId     or "rgui_key") .. ".txt"
 
+    -- ── tier accent colours  (extend as needed) ──────────────────
+    local TIER_COLORS = {
+        Free      = Color3.fromRGB(110, 115, 125),
+        VIP       = Color3.fromRGB(70,  150, 255),
+        Premium   = Color3.fromRGB(255, 185, 40),
+        Admin     = Color3.fromRGB(255, 95,  75),
+        Developer = Color3.fromRGB(190, 70,  255),
+        Owner     = Color3.fromRGB(255, 50,  50),
+    }
+
+    -- ── sort service names for stable ordering ───────────────────
+    local serviceNames = {}
+    for name in pairs(services) do table.insert(serviceNames, name) end
+    table.sort(serviceNames)
+
+    if #serviceNames == 0 then
+        serviceNames = {"Free Access"}
+        services     = {["Free Access"] = {
+            Validate = function() return true end,
+            Tier     = "Free",
+            Premium  = false,
+        }}
+    end
+
+    -- ── optional: load previously saved key ─────────────────────
+    local savedKey = ""
+    if saveKey then
+        pcall(function()
+            if readfile then savedKey = readfile(saveId) or "" end
+        end)
+    end
+
+    -- ── mutable state ────────────────────────────────────────────
+    local selectedService = serviceNames[1]
+    local retryCount      = 0
+    local isLocked        = false
+    local isMasked        = false
+    local realKey         = savedKey
+    local isValidating    = false
+
+    -- ── ScreenGui ────────────────────────────────────────────────
+    local keyScreen = Instance.new("ScreenGui")
+    keyScreen.Name         = "RGui_KeySystem"
+    keyScreen.ResetOnSpawn = false
+    keyScreen.Parent       = CoreGui
+    self._keySystemGui     = keyScreen
+
+    -- ── shared Instance.new helpers ───────────────────────────────
+    local function makeLabel(parent, props)
+        local lbl = Instance.new("TextLabel")
+        lbl.BackgroundTransparency = 1
+        lbl.Font = Enum.Font.RobotoMono
+        for k, v in pairs(props) do lbl[k] = v end
+        lbl.Parent = parent
+        return lbl
+    end
+
+    local function makeButton(parent, props)
+        local btn = Instance.new("TextButton")
+        btn.Font = Enum.Font.RobotoMono
+        for k, v in pairs(props) do btn[k] = v end
+        btn.Parent = parent
+        return btn
+    end
+
+    -- ── main frame ───────────────────────────────────────────────
     local mainFrame = Instance.new("Frame")
     mainFrame.BackgroundColor3 = theme.WindowBg
-    mainFrame.Position = UDim2.new(0.5, -200, 0.4, 0)
-    mainFrame.Size = UDim2.new(0, 400, 0, 180)
+    mainFrame.Position         = UDim2.new(0.5, -215, 0.42, 0)  -- slightly low for slide-in
+    mainFrame.Size             = UDim2.new(0, 430, 0, 210)
     mainFrame.ClipsDescendants = false
-    mainFrame.Parent = keyScreen
+    mainFrame.Parent           = keyScreen
     applyCorner(mainFrame, 4)
     applyBorder(mainFrame, theme.Border)
 
+    -- slide-in entrance animation
+    mainFrame.BackgroundTransparency = 1
+    task.spawn(function()
+        TweenService:Create(mainFrame,
+            TweenInfo.new(0.22, Enum.EasingStyle.Quart, Enum.EasingDirection.Out),
+            {BackgroundTransparency = 0, Position = UDim2.new(0.5, -215, 0.4, 0)}
+        ):Play()
+    end)
+
+    -- ── title bar ────────────────────────────────────────────────
     local titleBar = Instance.new("Frame")
     titleBar.BackgroundColor3 = theme.TitleBg
-    titleBar.Size = UDim2.new(1, 0, 0, 24)
-    titleBar.Parent = mainFrame
+    titleBar.Size             = UDim2.new(1, 0, 0, 26)
+    titleBar.Parent           = mainFrame
     applyCorner(titleBar, 4)
 
-    local titleLbl = Instance.new("TextLabel")
-    titleLbl.BackgroundTransparency = 1
-    titleLbl.Font = Enum.Font.RobotoMono
-    titleLbl.Text = " " .. title
-    titleLbl.TextColor3 = theme.Text
-    titleLbl.TextSize = 13
-    titleLbl.TextXAlignment = Enum.TextXAlignment.Left
-    titleLbl.Parent = titleBar
+    local titleLbl = makeLabel(titleBar, {
+        Text           = " " .. title,
+        TextColor3     = theme.Text,
+        TextSize       = 13,
+        TextXAlignment = Enum.TextXAlignment.Left,
+    })
 
     if config.Icon then
         local icon = Instance.new("ImageLabel")
         icon.BackgroundTransparency = 1
-        icon.Size = UDim2.new(0, 20, 0, 20)
+        icon.Size     = UDim2.new(0, 20, 0, 20)
         icon.Position = UDim2.new(0, 4, 0.5, -10)
-        icon.Image = config.Icon
-        icon.Parent = titleBar
+        icon.Image    = config.Icon
+        icon.Parent   = titleBar
         titleLbl.Position = UDim2.new(0, 28, 0, 0)
-        titleLbl.Size = UDim2.new(1, -52, 1, 0)
+        titleLbl.Size     = UDim2.new(1, -52, 1, 0)
     else
         titleLbl.Position = UDim2.new(0, 8, 0, 0)
-        titleLbl.Size = UDim2.new(1, -28, 1, 0)
+        titleLbl.Size     = UDim2.new(1, -30, 1, 0)
     end
 
-    local closeBtn = Instance.new("TextButton")
-    closeBtn.BackgroundTransparency = 1
-    closeBtn.Position = UDim2.new(1, -20, 0, 0)
-    closeBtn.Size = UDim2.new(0, 20, 1, 0)
-    closeBtn.Font = Enum.Font.RobotoMono
-    closeBtn.Text = "×"
-    closeBtn.TextColor3 = theme.SubText
-    closeBtn.TextSize = 14
-    closeBtn.Parent = titleBar
+    local closeBtn = makeButton(titleBar, {
+        BackgroundTransparency = 1,
+        Position    = UDim2.new(1, -22, 0, 0),
+        Size        = UDim2.new(0, 22, 1, 0),
+        Text        = "×",
+        TextColor3  = theme.SubText,
+        TextSize    = 16,
+    })
+    closeBtn.MouseEnter:Connect(function() closeBtn.TextColor3 = theme.Text end)
+    closeBtn.MouseLeave:Connect(function() closeBtn.TextColor3 = theme.SubText end)
     closeBtn.MouseButton1Click:Connect(function() keyScreen:Destroy() end)
 
     makeDraggable(mainFrame, titleBar)
 
+    -- ── LEFT PANEL ───────────────────────────────────────────────
     local leftPanel = Instance.new("Frame")
     leftPanel.BackgroundTransparency = 1
-    leftPanel.Position = UDim2.new(0, 8, 0, 30)
-    leftPanel.Size = UDim2.new(0, 180, 1, -38)
+    leftPanel.Position         = UDim2.new(0, 8, 0, 32)
+    leftPanel.Size             = UDim2.new(0, 196, 1, -40)
     leftPanel.ClipsDescendants = false
-    leftPanel.Parent = mainFrame
+    leftPanel.Parent           = mainFrame
 
-    local scriptTitle = Instance.new("TextLabel")
-    scriptTitle.BackgroundTransparency = 1
-    scriptTitle.Size = UDim2.new(1, 0, 0, 18)
-    scriptTitle.Font = Enum.Font.RobotoMono
-    scriptTitle.Text = config.ScriptTitle or "My Script"
-    scriptTitle.TextColor3 = theme.Accent
-    scriptTitle.TextSize = 13
-    scriptTitle.TextXAlignment = Enum.TextXAlignment.Left
-    scriptTitle.Parent = leftPanel
+    -- script title (accent-coloured)
+    makeLabel(leftPanel, {
+        Size           = UDim2.new(1, 0, 0, 18),
+        Text           = config.ScriptTitle or "My Script",
+        TextColor3     = theme.Accent,
+        TextSize       = 13,
+        TextXAlignment = Enum.TextXAlignment.Left,
+    })
 
+    -- ── key input row ─────────────────────────────────────────────
     local inputRow = Instance.new("Frame")
     inputRow.BackgroundTransparency = 1
-    inputRow.Position = UDim2.new(0, 0, 0, 26)
-    inputRow.Size = UDim2.new(1, 0, 0, 24)
-    inputRow.Parent = leftPanel
+    inputRow.Position = UDim2.new(0, 0, 0, 24)
+    inputRow.Size     = UDim2.new(1, 0, 0, 26)
+    inputRow.Parent   = leftPanel
 
     local keyInput = Instance.new("TextBox")
-    keyInput.BackgroundColor3 = theme.FrameBg
-    keyInput.Size = UDim2.new(1, -28, 1, 0)
-    keyInput.Font = Enum.Font.RobotoMono
-    keyInput.PlaceholderText = "Enter key..."
+    keyInput.BackgroundColor3  = theme.FrameBg
+    keyInput.Font              = Enum.Font.RobotoMono
+    keyInput.PlaceholderText   = "Enter key..."
     keyInput.PlaceholderColor3 = theme.SubText
-    keyInput.Text = ""
-    keyInput.TextColor3 = theme.Text
-    keyInput.TextSize = 13
-    keyInput.Parent = inputRow
+    keyInput.Text              = savedKey
+    keyInput.TextColor3        = theme.Text
+    keyInput.TextSize          = 12
+    keyInput.ClearTextOnFocus  = false
+    keyInput.Parent            = inputRow
     applyCorner(keyInput, 2)
     applyBorder(keyInput, theme.Border)
 
+    -- 👁 eye toggle (always present, rightmost)
+    local eyeBtn = Instance.new("TextButton")
+    eyeBtn.BackgroundColor3 = theme.FrameBg
+    eyeBtn.Size             = UDim2.new(0, 26, 1, 0)
+    eyeBtn.Position         = UDim2.new(1, -26, 0, 0)
+    eyeBtn.Font             = Enum.Font.RobotoMono
+    eyeBtn.Text             = "👁"
+    eyeBtn.TextColor3       = theme.SubText
+    eyeBtn.TextSize         = 14
+    eyeBtn.Parent           = inputRow
+    applyCorner(eyeBtn, 2)
+    applyBorder(eyeBtn, theme.Border)
+
+    -- 📋 copy button (only visible when service has CopyLink/CopyKey)
     local copyBtn = Instance.new("TextButton")
     copyBtn.BackgroundColor3 = theme.FrameBg
-    copyBtn.Size = UDim2.new(0, 24, 1, 0)
-    copyBtn.Position = UDim2.new(1, -24, 0, 0)
-    copyBtn.Font = Enum.Font.RobotoMono
-    copyBtn.Text = "📋"
-    copyBtn.TextColor3 = theme.Text
-    copyBtn.TextSize = 14
-    copyBtn.Visible = false
-    copyBtn.Parent = inputRow
+    copyBtn.Size             = UDim2.new(0, 26, 1, 0)
+    copyBtn.Position         = UDim2.new(1, -56, 0, 0)
+    copyBtn.Font             = Enum.Font.RobotoMono
+    copyBtn.Text             = "📋"
+    copyBtn.TextColor3       = theme.Text
+    copyBtn.TextSize         = 14
+    copyBtn.Visible          = false
+    copyBtn.Parent           = inputRow
     applyCorner(copyBtn, 2)
     applyBorder(copyBtn, theme.Border)
 
-    local selectedService = serviceNames[1]
+    -- recalculate input width so it never overlaps the icon buttons
+    local function refreshInputWidth()
+        local rightPad = 30  -- eye button always present
+        if copyBtn.Visible then rightPad = rightPad + 30 end
+        keyInput.Size = UDim2.new(1, -rightPad, 1, 0)
+    end
+    refreshInputWidth()
 
+    -- track real text separately from the masked display
+    keyInput:GetPropertyChangedSignal("Text"):Connect(function()
+        if not isMasked then realKey = keyInput.Text end
+    end)
+
+    -- eye toggle: hide key while streaming / recording
+    eyeBtn.MouseButton1Click:Connect(function()
+        if isLocked then return end
+        isMasked = not isMasked
+        if isMasked then
+            realKey                = keyInput.Text
+            keyInput.Text          = string.rep("•", #realKey)
+            keyInput.TextEditable  = false
+            eyeBtn.TextColor3      = theme.Accent
+        else
+            keyInput.Text          = realKey
+            keyInput.TextEditable  = true
+            eyeBtn.TextColor3      = theme.SubText
+        end
+    end)
+
+    -- copy button logic
     copyBtn.MouseButton1Click:Connect(function()
-        local serviceData = services[selectedService]
-        local toCopy = serviceData.CopyLink or serviceData.CopyKey
+        local data   = services[selectedService]
+        local toCopy = data and (data.CopyLink or data.CopyKey)
         if toCopy then
             if setclipboard then setclipboard(toCopy)
             elseif toclipboard then toclipboard(toCopy) end
             copyBtn.BackgroundColor3 = theme.Accent
             task.delay(0.2, function() copyBtn.BackgroundColor3 = theme.FrameBg end)
-            self:Notify("Copied!", "The key/link has been copied.", 2, { Color = theme.Accent })
+            self:Notify("Copied!", "Key/link copied to clipboard.", 2, {Type = "success"})
         end
     end)
 
-    local serviceBtn = Instance.new("TextButton")
-    serviceBtn.BackgroundColor3 = theme.FrameBg
-    serviceBtn.Position = UDim2.new(0, 0, 0, 60)
-    serviceBtn.Size = UDim2.new(1, 0, 0, 24)
-    serviceBtn.Font = Enum.Font.RobotoMono
-    serviceBtn.Text = "  " .. serviceNames[1]
-    serviceBtn.TextColor3 = theme.Text
-    serviceBtn.TextSize = 13
-    serviceBtn.TextXAlignment = Enum.TextXAlignment.Left
-    serviceBtn.Parent = leftPanel
+    -- ── service selector button ───────────────────────────────────
+    local serviceBtn = makeButton(leftPanel, {
+        BackgroundColor3 = theme.FrameBg,
+        Position         = UDim2.new(0, 0, 0, 60),
+        Size             = UDim2.new(1, 0, 0, 26),
+        Text             = "  " .. serviceNames[1],
+        TextColor3       = theme.Text,
+        TextSize         = 12,
+        TextXAlignment   = Enum.TextXAlignment.Left,
+    })
     applyCorner(serviceBtn, 2)
     applyBorder(serviceBtn, theme.Border)
 
+    -- dropdown list (parented to mainFrame to overflow the left panel)
     local serviceList = Instance.new("Frame")
     serviceList.BackgroundColor3 = theme.TabNormal
-    serviceList.Size = UDim2.new(0, 180, 0, 0)
-    serviceList.Visible = false
-    serviceList.ZIndex = 10
-    serviceList.Parent = mainFrame
+    serviceList.Size             = UDim2.new(0, 196, 0, 0)
+    serviceList.Visible          = false
+    serviceList.ZIndex           = 20
+    serviceList.ClipsDescendants = true
+    serviceList.Parent           = mainFrame
+    applyCorner(serviceList, 2)
     applyBorder(serviceList, theme.Border)
 
     local serviceLayout = Instance.new("UIListLayout")
     serviceLayout.SortOrder = Enum.SortOrder.LayoutOrder
-    serviceLayout.Parent = serviceList
+    serviceLayout.Parent    = serviceList
 
-    local serviceButtons = {}
+    -- ── status / retry label ──────────────────────────────────────
+    local statusLbl = makeLabel(leftPanel, {
+        Position       = UDim2.new(0, 0, 0, 95),
+        Size           = UDim2.new(1, 0, 0, 14),
+        Text           = "",
+        TextColor3     = theme.SubText,
+        TextSize       = 11,
+        TextXAlignment = Enum.TextXAlignment.Left,
+    })
+
+    -- ── submit button ─────────────────────────────────────────────
+    local submitBtn = makeButton(leftPanel, {
+        BackgroundColor3 = theme.FrameBg,
+        Position         = UDim2.new(0, 0, 1, -28),
+        Size             = UDim2.new(1, 0, 0, 26),
+        Text             = "Check Key",
+        TextColor3       = theme.Text,
+        TextSize         = 13,
+    })
+    applyCorner(submitBtn, 2)
+    applyBorder(submitBtn, theme.Border)
+
+    -- ── RIGHT PANEL ───────────────────────────────────────────────
+    local rightPanel = Instance.new("Frame")
+    rightPanel.BackgroundColor3 = theme.FrameBg
+    rightPanel.Position         = UDim2.new(0, 212, 0, 32)
+    rightPanel.Size             = UDim2.new(0, 210, 1, -40)
+    rightPanel.ClipsDescendants = true
+    rightPanel.Parent           = mainFrame
+    applyCorner(rightPanel, 2)
+    applyBorder(rightPanel, theme.Border)
+
+    -- tier pill badge (top-right of right panel)
+    local tierBadge = Instance.new("Frame")
+    tierBadge.BackgroundColor3 = TIER_COLORS["Free"]
+    tierBadge.Size             = UDim2.new(0, 64, 0, 16)
+    tierBadge.Position         = UDim2.new(1, -70, 0, 6)
+    tierBadge.Parent           = rightPanel
+    applyCorner(tierBadge, 8)
+
+    makeLabel(tierBadge, {
+        Size       = UDim2.new(1, 0, 1, 0),
+        Text       = "FREE",
+        TextColor3 = Color3.new(1, 1, 1),
+        TextSize   = 10,
+    })
+    -- keep a reference so we can update it
+    local tierBadgeLabel = tierBadge:FindFirstChildOfClass("TextLabel")
+
+    -- ⭐ PREMIUM pill badge (below tier badge)
+    local premiumBadge = Instance.new("Frame")
+    premiumBadge.BackgroundColor3 = Color3.fromRGB(255, 195, 30)
+    premiumBadge.Size             = UDim2.new(0, 64, 0, 14)
+    premiumBadge.Position         = UDim2.new(1, -70, 0, 26)
+    premiumBadge.Visible          = false
+    premiumBadge.Parent           = rightPanel
+    applyCorner(premiumBadge, 8)
+
+    makeLabel(premiumBadge, {
+        Size       = UDim2.new(1, 0, 1, 0),
+        Text       = "⭐ PREMIUM",
+        TextColor3 = Color3.fromRGB(30, 20, 0),
+        TextSize   = 9,
+    })
+
+    -- description text (left-aligned, wrapping)
+    local descLabel = makeLabel(rightPanel, {
+        Position       = UDim2.new(0, 6, 0, 6),
+        Size           = UDim2.new(1, -78, 0, 60),
+        Text           = desc,
+        TextColor3     = theme.SubText,
+        TextSize       = 11,
+        TextWrapped    = true,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        TextYAlignment = Enum.TextYAlignment.Top,
+    })
+
+    -- "How to get this key" link button (hidden unless service provides HowToLink)
+    local howToBtn = makeButton(rightPanel, {
+        BackgroundColor3 = theme.WindowBg,
+        Position         = UDim2.new(0, 6, 1, -32),
+        Size             = UDim2.new(1, -12, 0, 22),
+        Text             = "How to get this key  ↗",
+        TextColor3       = theme.Accent,
+        TextSize         = 11,
+        Visible          = false,
+    })
+    applyCorner(howToBtn, 2)
+    applyBorder(howToBtn, theme.Border)
+
+    -- ── right-panel refresh (called on service selection change) ──
+    local function refreshRightPanel(srvName)
+        local data      = services[srvName]
+        if not data then return end
+
+        local tier      = data.Tier    or "Free"
+        local isPremium = data.Premium or false
+
+        -- update tier badge
+        tierBadgeLabel.Text            = tier:upper()
+        tierBadge.BackgroundColor3     = TIER_COLORS[tier] or theme.Accent
+
+        -- show/hide premium badge
+        premiumBadge.Visible = isPremium
+
+        -- "How to get" link
+        local link = data.HowToLink
+        howToBtn.Visible = link ~= nil
+        -- disconnect old click and reconnect
+        if howToBtn:FindFirstChild("_conn") then
+            howToBtn._conn:Disconnect()
+        end
+        if link then
+            howToBtn._conn = howToBtn.MouseButton1Click:Connect(function()
+                pcall(game.GetService, game, "GuiService")  -- sanity
+                pcall(function()
+                    game:GetService("GuiService"):OpenBrowserWindow(link)
+                end)
+            end)
+        end
+
+        -- copy button
+        local hasCopy   = data.CopyLink or data.CopyKey
+        copyBtn.Visible = hasCopy ~= nil
+        refreshInputWidth()
+    end
+
+    refreshRightPanel(selectedService)  -- initial state
+
+    -- ── service dropdown item buttons ─────────────────────────────
     for i, srv in ipairs(serviceNames) do
         local btn = Instance.new("TextButton")
         btn.BackgroundTransparency = 1
-        btn.Size = UDim2.new(1, 0, 0, 22)
-        btn.Font = Enum.Font.RobotoMono
-        btn.Text = " " .. srv
-        btn.TextColor3 = theme.TabNormalText
-        btn.TextSize = 12
-        btn.TextXAlignment = Enum.TextXAlignment.Left
-        btn.LayoutOrder = i
-        btn.ZIndex = 10
-        btn.Parent = serviceList
+        btn.Size             = UDim2.new(1, 0, 0, 24)
+        btn.Font             = Enum.Font.RobotoMono
+        btn.Text             = " " .. srv
+        btn.TextColor3       = theme.TabNormalText
+        btn.TextSize         = 12
+        btn.TextXAlignment   = Enum.TextXAlignment.Left
+        btn.LayoutOrder      = i
+        btn.ZIndex           = 20
+        btn.Parent           = serviceList
 
-        btn.MouseEnter:Connect(function() btn.TextColor3 = theme.Accent end)
-        btn.MouseLeave:Connect(function() btn.TextColor3 = theme.TabNormalText end)
+        btn.MouseEnter:Connect(function() btn.BackgroundTransparency = 0.82 end)
+        btn.MouseLeave:Connect(function() btn.BackgroundTransparency = 1    end)
         btn.MouseButton1Click:Connect(function()
-            selectedService = srv
-            serviceBtn.Text = "  " .. srv
-            serviceList.Visible = false
-            TweenService:Create(serviceList, TWEEN_FAST, {Size = UDim2.new(0, 180, 0, 0)}):Play()
-            local data = services[srv]
-            copyBtn.Visible = data and (data.CopyLink or data.CopyKey) ~= nil
-            keyInput.Size = copyBtn.Visible and UDim2.new(1, -28, 1, 0) or UDim2.new(1, 0, 1, 0)
+            selectedService  = srv
+            serviceBtn.Text  = "  " .. srv
+            TweenService:Create(serviceList, TWEEN_FAST, {Size = UDim2.new(0, 196, 0, 0)}):Play()
+            task.delay(0.1, function() serviceList.Visible = false end)
+            isServiceOpen = false
+            refreshRightPanel(srv)
+            statusLbl.Text = ""
         end)
-        serviceButtons[srv] = btn
     end
 
     local isServiceOpen = false
     serviceBtn.MouseButton1Click:Connect(function()
         isServiceOpen = not isServiceOpen
         if isServiceOpen then
-            local absPos = serviceBtn.AbsolutePosition
+            local absPos  = serviceBtn.AbsolutePosition
             local absSize = serviceBtn.AbsoluteSize
-            serviceList.Position = UDim2.new(0, absPos.X - mainFrame.AbsolutePosition.X,
-                                             0, absPos.Y + absSize.Y - mainFrame.AbsolutePosition.Y)
+            serviceList.Position = UDim2.new(0,
+                absPos.X  - mainFrame.AbsolutePosition.X,
+                0,
+                absPos.Y  + absSize.Y - mainFrame.AbsolutePosition.Y)
             serviceList.Visible = true
-            local listHeight = #serviceNames * 22
-            TweenService:Create(serviceList, TWEEN_FAST, {Size = UDim2.new(0, 180, 0, listHeight)}):Play()
+            local h = math.min(#serviceNames, 5) * 24
+            TweenService:Create(serviceList, TWEEN_FAST, {Size = UDim2.new(0, 196, 0, h)}):Play()
         else
-            TweenService:Create(serviceList, TWEEN_FAST, {Size = UDim2.new(0, 180, 0, 0)}):Play()
+            TweenService:Create(serviceList, TWEEN_FAST, {Size = UDim2.new(0, 196, 0, 0)}):Play()
             task.delay(0.1, function() serviceList.Visible = false end)
         end
     end)
 
-    local submitBtn = Instance.new("TextButton")
-    submitBtn.BackgroundColor3 = theme.FrameBg
-    submitBtn.Position = UDim2.new(0, 0, 1, -28)
-    submitBtn.Size = UDim2.new(1, 0, 0, 24)
-    submitBtn.Font = Enum.Font.RobotoMono
-    submitBtn.Text = "Check Key"
-    submitBtn.TextColor3 = theme.Text
-    submitBtn.TextSize = 13
-    submitBtn.Parent = leftPanel
-    applyCorner(submitBtn, 2)
-    applyBorder(submitBtn, theme.Border)
-
-    submitBtn.MouseButton1Click:Connect(function()
-        local service = services[selectedService]
-        if service and service.Validate then
-            local key = keyInput.Text
-            if service.Validate(key) then
-                onSuccess(selectedService, key)
-                keyScreen:Destroy()
-            else
-                local origColor = keyInput.BackgroundColor3
-                keyInput.BackgroundColor3 = Color3.fromRGB(255, 0, 0)
-                task.delay(0.3, function() keyInput.BackgroundColor3 = origColor end)
-            end
-        end
-    end)
-
-    local rightPanel = Instance.new("Frame")
-    rightPanel.BackgroundColor3 = theme.FrameBg
-    rightPanel.Position = UDim2.new(0, 196, 0, 30)
-    rightPanel.Size = UDim2.new(0, 196, 1, -38)
-    rightPanel.Parent = mainFrame
-    applyCorner(rightPanel, 2)
-    applyBorder(rightPanel, theme.Border)
-
-    local descLabel = Instance.new("TextLabel")
-    descLabel.BackgroundTransparency = 1
-    descLabel.Position = UDim2.new(0, 6, 0, 6)
-    descLabel.Size = UDim2.new(1, -12, 1, -12)
-    descLabel.Font = Enum.Font.RobotoMono
-    descLabel.Text = description
-    descLabel.TextColor3 = theme.SubText
-    descLabel.TextSize = 12
-    descLabel.TextWrapped = true
-    descLabel.Parent = rightPanel
-
-    local initialData = services[selectedService]
-    if initialData and (initialData.CopyLink or initialData.CopyKey) then
-        copyBtn.Visible = true
-        keyInput.Size = UDim2.new(1, -28, 1, 0)
+    -- ── lockout helpers ───────────────────────────────────────────
+    local function setUILocked(locked)
+        isLocked                  = locked
+        keyInput.TextEditable     = not locked
+        submitBtn.BackgroundColor3 = locked
+            and Color3.fromRGB(80, 28, 28)
+            or  theme.FrameBg
+        if not locked then submitBtn.Text = "Check Key" end
     end
 
+    local function triggerLockout()
+        setUILocked(true)
+        submitBtn.Text = "Locked out..."
+        if onLockout then task.spawn(onLockout) end
+        self:Notify("Too many attempts",
+            "Wait " .. retryCD .. "s before retrying.", retryCD, {Type = "error"})
+
+        local remaining = retryCD
+        local function tick()
+            remaining -= 1
+            statusLbl.Text = "Retry in " .. remaining .. "s…"
+            if remaining <= 0 then
+                retryCount     = 0
+                statusLbl.Text = ""
+                setUILocked(false)
+            else
+                task.delay(1, tick)
+            end
+        end
+        task.delay(1, tick)
+    end
+
+    -- ── submit / validation logic ─────────────────────────────────
+    local function onSubmit()
+        if isLocked or isValidating then return end
+        local service = services[selectedService]
+        if not (service and service.Validate) then return end
+
+        local key = isMasked and realKey or keyInput.Text
+        if key == "" and not service.IsAsync then
+            self:Notify("Empty Key", "Please enter a key first.", 2, {Type = "warn"})
+            return
+        end
+
+        isValidating       = true
+        submitBtn.Text     = "Validating…"
+        statusLbl.Text     = ""
+
+        -- called with the boolean result of Validate()
+        local function handleResult(success)
+            isValidating = false
+
+            if success then
+                -- persist key if SaveKey is enabled
+                if saveKey then
+                    pcall(function()
+                        if writefile then writefile(saveId, key) end
+                    end)
+                end
+
+                local tier      = service.Tier    or "Free"
+                local isPremium = service.Premium  or false
+
+                -- store on the RGui instance so IsPremium() / GetTier() work
+                self._tier      = tier
+                self._isPremium = isPremium
+
+                self:Notify("Access Granted",
+                    "Welcome!  Tier: " .. tier, 3, {Type = "success"})
+                keyScreen:Destroy()
+                task.spawn(function()
+                    onSuccess(selectedService, key, tier, isPremium)
+                end)
+
+            else
+                retryCount += 1
+
+                -- flash red on the input box
+                keyInput.BackgroundColor3 = Color3.fromRGB(180, 45, 45)
+                task.delay(0.35, function()
+                    keyInput.BackgroundColor3 = theme.FrameBg
+                end)
+
+                if maxRetries > 0 and retryCount >= maxRetries then
+                    statusLbl.Text = ""
+                    triggerLockout()
+                else
+                    submitBtn.Text = "Check Key"
+                    if maxRetries > 0 then
+                        local left = maxRetries - retryCount
+                        statusLbl.Text = left .. " attempt" .. (left == 1 and "" or "s") .. " left"
+                    else
+                        statusLbl.Text = "Invalid key."
+                    end
+                    self:Notify("Invalid Key",
+                        "The key you entered is incorrect.", 2, {Type = "error"})
+                end
+            end
+        end
+
+        -- async validators run in a separate thread to avoid yielding the UI
+        if service.IsAsync then
+            task.spawn(function()
+                local ok, result = pcall(service.Validate, key)
+                handleResult(ok and result == true)
+            end)
+        else
+            local ok, result = pcall(service.Validate, key)
+            handleResult(ok and result == true)
+        end
+    end
+
+    submitBtn.MouseButton1Click:Connect(onSubmit)
+    keyInput.FocusLost:Connect(function(enterPressed)
+        if enterPressed then onSubmit() end
+    end)
+
+    -- auto-validate if a saved key was loaded
+    if savedKey ~= "" then
+        task.delay(0.35, onSubmit)
+    end
+
+    -- ── returned object ───────────────────────────────────────────
     local keySys = {}
-    function keySys:Destroy() keyScreen:Destroy() end
+
+    --- Destroy the key system GUI manually.
+    function keySys:Destroy()
+        if keyScreen and keyScreen.Parent then
+            keyScreen:Destroy()
+        end
+    end
+
+    --- Programmatically unlock access (intended for DevProduct receipt handlers).
+    ---   tier      : string  (optional, falls back to service.Tier)
+    ---   isPremium : bool    (optional, falls back to service.Premium)
+    function keySys:Unlock(tier, isPremium)
+        local svc             = services[selectedService]
+        local resolvedTier    = tier      or (svc and svc.Tier)    or "VIP"
+        local resolvedPremium = isPremium ~= nil
+            and isPremium
+            or  (svc and svc.Premium)
+            or  false
+
+        self._tier      = resolvedTier
+        self._isPremium = resolvedPremium
+
+        self:Notify("Access Granted",
+            "Welcome!  Tier: " .. resolvedTier, 3, {Type = "success"})
+        keyScreen:Destroy()
+        task.spawn(function()
+            onSuccess(selectedService, "", resolvedTier, resolvedPremium)
+        end)
+    end
+
     return keySys
 end
 
-function RGui:Notify(title, message, duration, options)
-    local theme = self._theme
-    duration = duration or 3
-    options = options or {}
+-- ============================================================
+--  RGui:IsPremium()
+--
+--  Returns true if the last validated service had Premium = true.
+--
+--  Usage:
+--    if RGui:IsPremium() then
+--        print("premium feature unlocked")
+--    else
+--        return
+--    end
+-- ============================================================
+function RGui:IsPremium()
+    return self._isPremium == true
+end
 
-    if not self._notificationGui then
+-- ============================================================
+--  RGui:GetTier()
+--
+--  Returns the tier string of the last validated service.
+--  Defaults to "Free" before any key system has been passed.
+--
+--  Usage:
+--    local tier = RGui:GetTier()
+--    if tier == "Owner" or tier == "Developer" then
+--        showDevPanel()
+--    end
+-- ============================================================
+function RGui:GetTier()
+    return self._tier or "Free"
+end
+
+-- ============================================================
+--  RGui:Notify  (upgraded)
+--
+--  options = {
+--    Type            = "success"|"error"|"warn"|"info",  -- preset
+--    Color           = Color3,   -- custom header colour (overrides preset)
+--    Icon            = "✔",      -- custom header icon text
+--    Position        = "BottomRight"|"BottomLeft"|"TopRight"|"TopLeft",
+--    MaxStack        = 5,        -- max simultaneous notifications
+--    BackgroundColor = Color3,
+--    TitleColor      = Color3,
+--    MessageColor    = Color3,
+--  }
+-- ============================================================
+
+local _NOTIFY_PRESETS = {
+    success = {headerColor = Color3.fromRGB(38,  175, 75),  icon = "✔"},
+    error   = {headerColor = Color3.fromRGB(200, 48,  48),  icon = "✖"},
+    warn    = {headerColor = Color3.fromRGB(215, 155, 0),   icon = "⚠"},
+    info    = {headerColor = Color3.fromRGB(55,  135, 220), icon = "ℹ"},
+}
+
+function RGui:Notify(title, message, duration, options)
+    local theme    = self._theme
+    duration       = duration or 3
+    options        = options  or {}
+
+    local preset   = options.Type and _NOTIFY_PRESETS[options.Type]
+    local position = options.Position  or self._notifyPosition  or "BottomRight"
+    local maxStack = options.MaxStack  or self._notifyMaxStack  or 5
+
+    -- ensure ScreenGui
+    if not self._notificationGui or not self._notificationGui.Parent then
         local gui = Instance.new("ScreenGui")
-        gui.Name = "RGui_Notifications"
+        gui.Name         = "RGui_Notifications"
         gui.ResetOnSpawn = false
-        gui.Parent = CoreGui
+        gui.Parent       = CoreGui
         self._notificationGui = gui
+        self._notifyStack     = {}
+    end
+    self._notifyStack = self._notifyStack or {}
+
+    -- enforce queue cap: destroy oldest first
+    while #self._notifyStack >= maxStack do
+        local oldest = table.remove(self._notifyStack, 1)
+        if oldest and oldest.Parent then oldest:Destroy() end
     end
 
-    local width, height, headerHeight, margin = 240, 75, 22, 10
+    local width, height, headerH, margin = 250, 76, 22, 10
 
     local frame = Instance.new("Frame")
     frame.BackgroundColor3 = options.BackgroundColor or theme.NotifyBg
-    frame.BorderSizePixel = 0
-    frame.Size = UDim2.new(0, width, 0, height)
+    frame.BorderSizePixel  = 0
+    frame.Size             = UDim2.new(0, width, 0, height)
     frame.ClipsDescendants = true
-    frame.Parent = self._notificationGui
-    applyCorner(frame, 2)
+    frame.Parent           = self._notificationGui
+    applyCorner(frame, 3)
     applyBorder(frame, theme.Border)
 
-    local titleBar = Instance.new("Frame")
-    titleBar.BackgroundColor3 = options.Color or theme.TitleBg
-    titleBar.BorderSizePixel = 0
-    titleBar.Size = UDim2.new(1, 0, 0, headerHeight)
-    titleBar.Parent = frame
+    table.insert(self._notifyStack, frame)
+
+    -- corner math
+    local isRight  = position:find("Right")  ~= nil
+    local isBottom = position:find("Bottom") ~= nil
+    local anchorX  = isRight  and 1 or 0
+    local anchorY  = isBottom and 1 or 0
+    local baseX    = isRight  and -(width + margin) or margin
+    local baseY    = isBottom and -(height + margin) or margin
+    local stepDir  = isBottom and -1 or 1  -- which direction existing ones shift
+
+    -- shift existing notifications to make room
+    local stepH = height + 8
+    for i = #self._notifyStack - 1, 1, -1 do
+        local child = self._notifyStack[i]
+        if child and child.Parent then
+            TweenService:Create(child, TWEEN_FAST, {
+                Position = child.Position + UDim2.new(0, 0, 0, stepDir * stepH)
+            }):Play()
+        end
+    end
+
+    -- start off-screen for slide animation
+    local slideStartX = isRight and (width + margin) or -(width + margin)
+    frame.Position = UDim2.new(anchorX, slideStartX, anchorY, baseY)
+
+    TweenService:Create(frame,
+        TweenInfo.new(0.2, Enum.EasingStyle.Quart, Enum.EasingDirection.Out),
+        {Position = UDim2.new(anchorX, baseX, anchorY, baseY)}
+    ):Play()
+
+    -- header bar
+    local headerColor = options.Color or (preset and preset.headerColor) or theme.TitleBg
+    local titleBar    = Instance.new("Frame")
+    titleBar.BackgroundColor3 = headerColor
+    titleBar.BorderSizePixel  = 0
+    titleBar.Size             = UDim2.new(1, 0, 0, headerH)
+    titleBar.Parent           = frame
+
+    -- preset / custom icon
+    local iconText = options.Icon or (preset and preset.icon) or ""
+    local titleOffsetX = 8
+    if iconText ~= "" then
+        local iconLbl = Instance.new("TextLabel")
+        iconLbl.BackgroundTransparency = 1
+        iconLbl.Font       = Enum.Font.RobotoMono
+        iconLbl.Text       = iconText
+        iconLbl.TextColor3 = Color3.new(1, 1, 1)
+        iconLbl.TextSize   = 13
+        iconLbl.Position   = UDim2.new(0, 6, 0, 0)
+        iconLbl.Size       = UDim2.new(0, 16, 1, 0)
+        iconLbl.Parent     = titleBar
+        titleOffsetX       = 26
+    end
 
     local titleLabel = Instance.new("TextLabel")
     titleLabel.BackgroundTransparency = 1
-    titleLabel.Font = Enum.Font.RobotoMono
-    titleLabel.Text = title or "Notification"
-    titleLabel.TextColor3 = options.TitleColor or theme.NotifyTitle
-    titleLabel.TextSize = 13
+    titleLabel.Font           = Enum.Font.RobotoMono
+    titleLabel.Text           = title or "Notification"
+    titleLabel.TextColor3     = options.TitleColor or theme.NotifyTitle
+    titleLabel.TextSize       = 13
     titleLabel.TextXAlignment = Enum.TextXAlignment.Left
-    titleLabel.Position = UDim2.new(0, 8, 0, 0)
-    titleLabel.Size = UDim2.new(1, -30, 1, 0)
-    titleLabel.Parent = titleBar
+    titleLabel.Position       = UDim2.new(0, titleOffsetX, 0, 0)
+    titleLabel.Size           = UDim2.new(1, -(titleOffsetX + headerH), 1, 0)
+    titleLabel.Parent         = titleBar
 
     local closeBtn = Instance.new("TextButton")
     closeBtn.BackgroundTransparency = 1
-    closeBtn.Position = UDim2.new(1, -headerHeight, 0, 0)
-    closeBtn.Size = UDim2.new(0, headerHeight, 0, headerHeight)
-    closeBtn.Font = Enum.Font.RobotoMono
-    closeBtn.Text = "×"
-    closeBtn.TextColor3 = theme.SubText
-    closeBtn.TextSize = 16
-    closeBtn.Parent = titleBar
-    closeBtn.MouseEnter:Connect(function() closeBtn.TextColor3 = theme.Text end)
-    closeBtn.MouseLeave:Connect(function() closeBtn.TextColor3 = theme.SubText end)
-    closeBtn.MouseButton1Click:Connect(function() frame:Destroy() end)
+    closeBtn.Position   = UDim2.new(1, -headerH, 0, 0)
+    closeBtn.Size       = UDim2.new(0, headerH, 0, headerH)
+    closeBtn.Font       = Enum.Font.RobotoMono
+    closeBtn.Text       = "×"
+    closeBtn.TextColor3 = Color3.new(1, 1, 1)
+    closeBtn.TextSize   = 16
+    closeBtn.Parent     = titleBar
+    closeBtn.MouseButton1Click:Connect(function()
+        for i, f in ipairs(self._notifyStack) do
+            if f == frame then table.remove(self._notifyStack, i) break end
+        end
+        frame:Destroy()
+    end)
 
     local msgLabel = Instance.new("TextLabel")
     msgLabel.BackgroundTransparency = 1
-    msgLabel.Font = Enum.Font.RobotoMono
-    msgLabel.Text = message or ""
-    msgLabel.TextColor3 = options.MessageColor or theme.NotifyMsg
-    msgLabel.TextSize = 13
-    msgLabel.TextWrapped = true
+    msgLabel.Font           = Enum.Font.RobotoMono
+    msgLabel.Text           = message or ""
+    msgLabel.TextColor3     = options.MessageColor or theme.NotifyMsg
+    msgLabel.TextSize       = 12
+    msgLabel.TextWrapped    = true
     msgLabel.TextXAlignment = Enum.TextXAlignment.Left
     msgLabel.TextYAlignment = Enum.TextYAlignment.Top
-    msgLabel.Position = UDim2.new(0, 8, 0, headerHeight + 6)
-    msgLabel.Size = UDim2.new(1, -16, 1, -(headerHeight + 12))
-    msgLabel.Parent = frame
+    msgLabel.Position       = UDim2.new(0, 8, 0, headerH + 5)
+    msgLabel.Size           = UDim2.new(1, -16, 1, -(headerH + 10))
+    msgLabel.Parent         = frame
 
-    local timerBarBg = Instance.new("Frame")
-    timerBarBg.BackgroundColor3 = theme.Border
-    timerBarBg.BorderSizePixel = 0
-    timerBarBg.Size = UDim2.new(1, 0, 0, 2)
-    timerBarBg.Position = UDim2.new(0, 0, 1, -2)
-    timerBarBg.Parent = frame
+    -- timer progress bar
+    local timerBg = Instance.new("Frame")
+    timerBg.BackgroundColor3 = theme.Border
+    timerBg.BorderSizePixel  = 0
+    timerBg.Size             = UDim2.new(1, 0, 0, 2)
+    timerBg.Position         = UDim2.new(0, 0, 1, -2)
+    timerBg.Parent           = frame
 
     local timerBar = Instance.new("Frame")
-    timerBar.BackgroundColor3 = options.Color or theme.Accent
-    timerBar.BorderSizePixel = 0
-    timerBar.Size = UDim2.new(1, 0, 1, 0)
-    timerBar.Parent = timerBarBg
+    timerBar.BackgroundColor3 = headerColor
+    timerBar.BorderSizePixel  = 0
+    timerBar.Size             = UDim2.new(1, 0, 1, 0)
+    timerBar.Parent           = timerBg
 
-    TweenService:Create(timerBar, TweenInfo.new(duration, Enum.EasingStyle.Linear), {Size = UDim2.new(0, 0, 1, 0)}):Play()
+    TweenService:Create(timerBar,
+        TweenInfo.new(duration, Enum.EasingStyle.Linear),
+        {Size = UDim2.new(0, 0, 1, 0)}
+    ):Play()
 
+    -- auto-dismiss with slide-out
     task.delay(duration, function()
-        if frame and frame.Parent then frame:Destroy() end
+        if not (frame and frame.Parent) then return end
+        local slideOutX = isRight and (width + margin) or -(width + margin)
+        TweenService:Create(frame,
+            TweenInfo.new(0.15, Enum.EasingStyle.Quart, Enum.EasingDirection.In),
+            {Position = frame.Position + UDim2.new(0, slideOutX, 0, 0)}
+        ):Play()
+        task.delay(0.16, function()
+            if frame and frame.Parent then
+                for i, f in ipairs(self._notifyStack) do
+                    if f == frame then table.remove(self._notifyStack, i) break end
+                end
+                frame:Destroy()
+            end
+        end)
     end)
 
-    local existing = self._notificationGui:GetChildren()
-    local offset = 0
-    local stepHeight = height + 8
-    for _, child in ipairs(existing) do
-        if child:IsA("Frame") and child ~= frame then
-            TweenService:Create(child, TWEEN_FAST, {Position = child.Position + UDim2.new(0, 0, 0, -stepHeight)}):Play()
-            offset += stepHeight
-        end
-    end
-    frame.Position = UDim2.new(1, -(width + margin), 1, -(height + margin) - offset)
-
     return frame
+end
+
+-- ============================================================
+--  RGui:DismissAllNotifications
+--  Immediately removes every queued notification from the screen.
+-- ============================================================
+function RGui:DismissAllNotifications()
+    if not self._notifyStack then return end
+    for _, frame in ipairs(self._notifyStack) do
+        if frame and frame.Parent then frame:Destroy() end
+    end
+    self._notifyStack = {}
+end
+
+-- ============================================================
+--  RGui:SetNotifyPosition(pos)
+--  Set the default corner for all subsequent Notify() calls.
+--  pos : "BottomRight" | "BottomLeft" | "TopRight" | "TopLeft"
+-- ============================================================
+function RGui:SetNotifyPosition(pos)
+    self._notifyPosition = pos
+end
+
+-- ============================================================
+--  RGui:SetNotifyMaxStack(n)
+--  Limit how many notifications can stack before the oldest is
+--  auto-dismissed.  Default is 5.
+-- ============================================================
+function RGui:SetNotifyMaxStack(n)
+    self._notifyMaxStack = n
 end
 
 function RGui:ShowDialog(options)
