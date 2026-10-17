@@ -1,3 +1,9 @@
+--!nocheck
+-- Axiom — single-file Roblox UI library
+-- Drop this whole file into a ModuleScript and use:
+--   local Axiom = require(path.To.Axiom)
+--   local window = Axiom.new({ title = "My App" })
+
 local Players          = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
 
@@ -83,7 +89,10 @@ Theme.Default = {
 function Theme.merge(base, override)
     local out = {}
     for k, v in pairs(base) do out[k] = v end
-    for k, v in pairs(override or {}) do out[k] = v end
+    -- only iterate when override is actually a table (allows theme = "dark", nil, etc.)
+    if type(override) == "table" then
+        for k, v in pairs(override) do out[k] = v end
+    end
     return out
 end
 
@@ -120,7 +129,7 @@ local function ensureNotifyGui()
 end
 
 function Notify.show(config)
-    local theme = config.theme or Theme.Default
+    local theme = type(config.theme) == "table" and config.theme or Theme.Default
     ensureNotifyGui()
 
     local toast = Util.create("Frame", {
@@ -175,14 +184,14 @@ end
 
 local function describeRow(parent, theme, config, controlWidth)
     Util.create("TextLabel", {
-        Text = config.name or "",
+        Text = tostring(config.name or ""),
         Font = theme.font, TextSize = theme.fontSize, TextColor3 = theme.text,
         TextXAlignment = Enum.TextXAlignment.Left, BackgroundTransparency = 1,
         Size = UDim2.new(1, -(controlWidth or 80), 0, 18), Parent = parent,
     })
     if config.description then
         Util.create("TextLabel", {
-            Text = config.description,
+            Text = tostring(config.description),
             Font = theme.font, TextSize = theme.fontSizeSm, TextColor3 = theme.muted,
             TextXAlignment = Enum.TextXAlignment.Left, TextWrapped = true,
             BackgroundTransparency = 1,
@@ -258,7 +267,7 @@ function Components.button(section, config)
     Util.corner(theme.cornerRadius).Parent = btn
     Util.stroke(theme.border, 1).Parent = btn
     Util.create("TextLabel", {
-        Text = config.name or "Button",
+        Text = tostring(config.name or "Button"),
         Font = theme.fontMedium, TextSize = theme.fontSize, TextColor3 = theme.text,
         BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), Parent = btn,
     })
@@ -617,7 +626,7 @@ end
 -- ---------- Input ----------
 function Components.input(section, config)
     local theme = section._theme
-    local value = config.default or ""
+    local value = tostring(config.default or "")
     local listeners, enabled = {}, not config.disabled
 
     local row = rowFrame(section._content, theme, config.description and 46 or 32)
@@ -642,10 +651,11 @@ function Components.input(section, config)
     function obj:onChanged(cb) table.insert(listeners, cb); return obj end
     function obj:set(v, silent)
         if not enabled then return end
-        value = v; box.Text = v
+        if v == nil then v = "" end
+        value = tostring(v); box.Text = value
         if not silent then
-            if config.callback then config.callback(v) end
-            for _, cb in ipairs(listeners) do cb(v) end
+            if config.callback then config.callback(value) end
+            for _, cb in ipairs(listeners) do cb(value) end
         end
     end
     local conn = box.FocusLost:Connect(function()
@@ -897,7 +907,7 @@ function Components.label(section, config)
     local theme = section._theme
     local row = rowFrame(section._content, theme, 20)
     local lbl = Util.create("TextLabel", {
-        Text = config.name or "", Font = theme.font,
+        Text = tostring(config.name or ""), Font = theme.font,
         TextSize = theme.fontSize,
         TextColor3 = config.muted and theme.muted or theme.text,
         TextXAlignment = (config.align == "center" and Enum.TextXAlignment.Center)
@@ -906,7 +916,9 @@ function Components.label(section, config)
         BackgroundTransparency = 1, Size = UDim2.new(1, 0, 1, 0), Parent = row,
     })
     local obj = { _root = row }
-    function obj:setText(t) lbl.Text = t end
+    function obj:setText(t)
+        lbl.Text = (t == nil) and "" or tostring(t)
+    end
     function obj:destroy() row:Destroy() end
     return obj
 end
@@ -915,14 +927,16 @@ end
 function Components.paragraph(section, config)
     local theme = section._theme
     local lbl = Util.create("TextLabel", {
-        Text = config.name or config.text or "",
+        Text = tostring(config.name or config.text or ""),
         Font = theme.font, TextSize = theme.fontSizeSm, TextColor3 = theme.muted,
         TextXAlignment = Enum.TextXAlignment.Left, TextWrapped = true,
         BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 0),
         AutomaticSize = Enum.AutomaticSize.Y, Parent = section._content,
     })
     local obj = { _root = lbl }
-    function obj:setText(t) lbl.Text = t end
+    function obj:setText(t)
+        lbl.Text = (t == nil) and "" or tostring(t)
+    end
     function obj:destroy() lbl:Destroy() end
     return obj
 end
@@ -964,7 +978,7 @@ function Components.checkbox(section, config)
     })
     check.Visible = checked
     Util.create("TextLabel", {
-        Text = config.name or "Checkbox",
+        Text = tostring(config.name or "Checkbox"),
         Font = theme.font, TextSize = theme.fontSize, TextColor3 = theme.text,
         TextXAlignment = Enum.TextXAlignment.Left, BackgroundTransparency = 1,
         Size = UDim2.new(1, -22, 1, 0), Position = UDim2.new(0, 22, 0, 0),
@@ -995,7 +1009,7 @@ function Components.progress(section, config)
 
     local row = rowFrame(section._content, theme, 28)
     Util.create("TextLabel", {
-        Text = config.name or "Progress",
+        Text = tostring(config.name or "Progress"),
         Font = theme.font, TextSize = theme.fontSize, TextColor3 = theme.text,
         TextXAlignment = Enum.TextXAlignment.Left, BackgroundTransparency = 1,
         Size = UDim2.new(1, -50, 0, 16), Parent = row,
@@ -1041,7 +1055,7 @@ function Components.badge(section, config)
     })
     Util.corner(9).Parent = pill
     Util.create("TextLabel", {
-        Text = config.name or "Badge", Font = theme.fontMedium,
+        Text = tostring(config.name or "Badge"), Font = theme.fontMedium,
         TextSize = 10, TextColor3 = color, BackgroundTransparency = 1,
         Size = UDim2.fromScale(1, 1), Parent = pill,
     })
@@ -1079,7 +1093,7 @@ function Section.new(tab, config)
         BackgroundTransparency = 1, Parent = self._root,
     })
     Util.create("TextLabel", {
-        Text = config.title or "Section",
+        Text = tostring(config.title or "Section"),
         Font = theme.fontBold, TextSize = 12, TextColor3 = theme.text,
         TextXAlignment = Enum.TextXAlignment.Left, BackgroundTransparency = 1,
         Size = UDim2.new(1, 0, 1, 0), Parent = titleRow,
@@ -1087,7 +1101,7 @@ function Section.new(tab, config)
 
     if config.description then
         Util.create("TextLabel", {
-            Text = config.description,
+            Text = tostring(config.description),
             Font = theme.font, TextSize = theme.fontSizeSm, TextColor3 = theme.muted,
             TextXAlignment = Enum.TextXAlignment.Left, TextWrapped = true,
             BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 0),
@@ -1164,7 +1178,7 @@ function Tab.new(window, config)
         Parent = self._navBtn,
     })
     self._name = Util.create("TextLabel", {
-        Text = config.name or "Tab", Font = theme.fontMedium,
+        Text = tostring(config.name or "Tab"), Font = theme.fontMedium,
         TextSize = theme.fontSize, TextColor3 = theme.muted,
         TextXAlignment = Enum.TextXAlignment.Left, BackgroundTransparency = 1,
         Size = UDim2.new(1, -36, 1, 0), Position = UDim2.new(0, 32, 0, 0),
@@ -1271,7 +1285,7 @@ function Window:_build(config)
         BackgroundColor3 = theme.sidebar, BorderSizePixel = 0, Parent = self._root,
     })
     Util.create("TextLabel", {
-        Text = config.title or "Application",
+        Text = tostring(config.title or "Application"),
         Font = theme.fontBold, TextSize = theme.fontSize, TextColor3 = theme.text,
         TextXAlignment = Enum.TextXAlignment.Left, BackgroundTransparency = 1,
         Size = UDim2.new(1, -40, 1, 0), Position = UDim2.new(0, 12, 0, 0),
@@ -1364,7 +1378,8 @@ end
 function Window:isVisible() return self._visible end
 
 function Window:setTheme(override)
-    self._theme = Theme.merge(Theme.Default, override)
+    if type(override) ~= "table" then return end
+    self._theme = Theme.merge(self._theme, override)   -- merge into CURRENT theme
     local t = self._theme
     self._root.BackgroundColor3     = t.background
     self._titleBar.BackgroundColor3 = t.sidebar
