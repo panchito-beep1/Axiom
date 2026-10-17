@@ -1,11 +1,11 @@
 --!nocheck
--- Axiom — single-file Roblox UI library
--- Drop this whole file into a ModuleScript and use:
---   local Axiom = require(path.To.Axiom)
---   local window = Axiom.new({ title = "My App" })
+-- Axiom UI Library  •  build 1.0.2
+-- If Axiom.build does not print "1.0.2", you are loading a STALE cached copy.
 
 local Players          = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
+
+local AXIOM_BUILD = "1.0.2"
 
 -- =========================================================
 -- Util
@@ -14,11 +14,13 @@ local Util = {}
 
 function Util.create(className, props)
     local inst = Instance.new(className)
-    local parent = props and props.Parent
-    if props then
-        for k, v in pairs(props) do
-            if k ~= "Parent" then inst[k] = v end
-        end
+    if type(props) ~= "table" then
+        if props then inst.Parent = props end
+        return inst
+    end
+    local parent = props.Parent
+    for k, v in pairs(props) do
+        if k ~= "Parent" then inst[k] = v end
     end
     if parent then inst.Parent = parent end
     return inst
@@ -40,6 +42,7 @@ end
 
 function Util.padding(props)
     local p = Instance.new("UIPadding")
+    props = props or {}
     p.PaddingTop    = UDim.new(0, props.top    or 0)
     p.PaddingBottom = UDim.new(0, props.bottom or 0)
     p.PaddingLeft   = UDim.new(0, props.left   or 0)
@@ -49,6 +52,7 @@ end
 
 function Util.listLayout(props)
     local l = Instance.new("UIListLayout")
+    props = props or {}
     l.FillDirection = props.direction or Enum.FillDirection.Vertical
     l.SortOrder     = Enum.SortOrder.LayoutOrder
     l.Padding       = UDim.new(0, props.gap or 4)
@@ -86,10 +90,12 @@ Theme.Default = {
     spacing      = 8,
 }
 
+-- BULLETPROOF: neither argument can ever be a non-table and cause pairs() to blow up.
 function Theme.merge(base, override)
     local out = {}
-    for k, v in pairs(base) do out[k] = v end
-    -- only iterate when override is actually a table (allows theme = "dark", nil, etc.)
+    if type(base) == "table" then
+        for k, v in pairs(base) do out[k] = v end
+    end
     if type(override) == "table" then
         for k, v in pairs(override) do out[k] = v end
     end
@@ -97,7 +103,7 @@ function Theme.merge(base, override)
 end
 
 -- =========================================================
--- Icons (text glyph fallbacks, no external assets)
+-- Icons
 -- =========================================================
 local Icons = {
     settings = "⚙", palette = "◐", home = "⌂", user = "●",
@@ -108,7 +114,7 @@ local Icons = {
 local function icon(name) return Icons[name] or "•" end
 
 -- =========================================================
--- Notify (toast system)
+-- Notify
 -- =========================================================
 local Notify = {}
 local notifyGui, notifyContainer
@@ -129,7 +135,8 @@ local function ensureNotifyGui()
 end
 
 function Notify.show(config)
-    local theme = type(config.theme) == "table" and config.theme or Theme.Default
+    config = config or {}
+    local theme = (type(config.theme) == "table") and config.theme or Theme.Default
     ensureNotifyGui()
 
     local toast = Util.create("Frame", {
@@ -150,14 +157,14 @@ function Notify.show(config)
         BorderSizePixel = 0, Parent = toast,
     })
     Util.create("TextLabel", {
-        Text = config.title or "Notification",
+        Text = tostring(config.title or "Notification"),
         Font = theme.fontBold, TextSize = theme.fontSize,
         TextColor3 = theme.text, TextXAlignment = Enum.TextXAlignment.Left,
         BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 18), Parent = toast,
     })
     if config.message then
         Util.create("TextLabel", {
-            Text = config.message,
+            Text = tostring(config.message),
             Font = theme.font, TextSize = theme.fontSizeSm, TextColor3 = theme.muted,
             TextXAlignment = Enum.TextXAlignment.Left, TextWrapped = true,
             BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 0),
@@ -730,7 +737,7 @@ function Components.keybind(section, config)
     Util.stroke(theme.border, 1).Parent = btn
 
     local valLbl = Util.create("TextLabel", {
-        Text = value and value.Name or "None",
+        Text = (typeof(value) == "EnumItem") and value.Name or "None",
         Font = theme.font, TextSize = 12, TextColor3 = theme.text,
         TextXAlignment = Enum.TextXAlignment.Left, BackgroundTransparency = 1,
         Size = UDim2.new(1, -16, 1, 0), Position = UDim2.new(0, 8, 0, 0), Parent = btn,
@@ -739,7 +746,7 @@ function Components.keybind(section, config)
     local function stopCapture()
         capturing = false
         if captureConn then captureConn:Disconnect(); captureConn = nil end
-        valLbl.Text = value and value.Name or "None"
+        valLbl.Text = (typeof(value) == "EnumItem") and value.Name or "None"
     end
     local function startCapture()
         capturing = true
@@ -764,7 +771,8 @@ function Components.keybind(section, config)
     function obj:onChanged(cb) table.insert(listeners, cb); return obj end
     function obj:set(v, silent)
         if not enabled then return end
-        value = v; valLbl.Text = v and v.Name or "None"
+        value = v
+        valLbl.Text = (typeof(v) == "EnumItem") and v.Name or "None"
         if not silent then
             if config.callback then config.callback(v) end
             for _, cb in ipairs(listeners) do cb(v) end
@@ -916,9 +924,7 @@ function Components.label(section, config)
         BackgroundTransparency = 1, Size = UDim2.new(1, 0, 1, 0), Parent = row,
     })
     local obj = { _root = row }
-    function obj:setText(t)
-        lbl.Text = (t == nil) and "" or tostring(t)
-    end
+    function obj:setText(t) lbl.Text = (t == nil) and "" or tostring(t) end
     function obj:destroy() row:Destroy() end
     return obj
 end
@@ -934,9 +940,7 @@ function Components.paragraph(section, config)
         AutomaticSize = Enum.AutomaticSize.Y, Parent = section._content,
     })
     local obj = { _root = lbl }
-    function obj:setText(t)
-        lbl.Text = (t == nil) and "" or tostring(t)
-    end
+    function obj:setText(t) lbl.Text = (t == nil) and "" or tostring(t) end
     function obj:destroy() lbl:Destroy() end
     return obj
 end
@@ -1071,6 +1075,7 @@ local Section = {}
 Section.__index = Section
 
 function Section.new(tab, config)
+    config = config or {}
     local self = setmetatable({}, Section)
     self._tab        = tab
     self._config     = config
@@ -1081,7 +1086,7 @@ function Section.new(tab, config)
     local parent = (config.column == 2) and tab._col2 or tab._col1
 
     self._root = Util.create("Frame", {
-        Name = config.title or "Section",
+        Name = tostring(config.title or "Section"),
         Size = UDim2.new(1, 0, 0, 0),
         AutomaticSize = Enum.AutomaticSize.Y,
         BackgroundTransparency = 1, Parent = parent,
@@ -1120,7 +1125,7 @@ function Section.new(tab, config)
 end
 
 local function delegate(self, factory, config)
-    local c = factory(self, config)
+    local c = factory(self, config or {})
     table.insert(self._components, c)
     return c
 end
@@ -1136,7 +1141,7 @@ function Section:keybind(config)       return delegate(self, Components.keybind,
 function Section:colorpicker(config)   return delegate(self, Components.colorpicker, config)   end
 function Section:label(config)         return delegate(self, Components.label, config)         end
 function Section:paragraph(config)     return delegate(self, Components.paragraph, config)     end
-function Section:divider(config)       return delegate(self, Components.divider, config)       end
+function Section:divider()             return delegate(self, Components.divider, {})           end
 function Section:checkbox(config)      return delegate(self, Components.checkbox, config)      end
 function Section:progress(config)      return delegate(self, Components.progress, config)      end
 function Section:badge(config)         return delegate(self, Components.badge, config)         end
@@ -1155,6 +1160,7 @@ local Tab = {}
 Tab.__index = Tab
 
 function Tab.new(window, config)
+    config = config or {}
     local self = setmetatable({}, Tab)
     self._window   = window
     self._config   = config
@@ -1163,7 +1169,7 @@ function Tab.new(window, config)
     local theme = window._theme
 
     self._navBtn = Util.create("TextButton", {
-        Name = config.name or "Tab",
+        Name = tostring(config.name or "Tab"),
         Size = UDim2.new(1, 0, 0, 30),
         BackgroundColor3 = theme.surface, BackgroundTransparency = 1,
         BorderSizePixel = 0, Text = "", AutoButtonColor = false,
@@ -1230,7 +1236,7 @@ function Tab:_applyTheme(theme)
 end
 
 function Tab:section(config)
-    local sec = Section.new(self, config)
+    local sec = Section.new(self, config or {})
     table.insert(self._sections, sec)
     return sec
 end
@@ -1249,8 +1255,11 @@ local Window = {}
 Window.__index = Window
 
 function Window.new(config)
+    config = config or {}
     local self = setmetatable({}, Window)
-    self._theme   = Theme.merge(Theme.Default, config.theme)
+    -- normalize theme: allow "dark" (string) → nil, only table overrides get merged
+    local themeOverride = (type(config.theme) == "table") and config.theme or nil
+    self._theme   = Theme.merge(Theme.Default, themeOverride)
     self._tabs    = {}
     self._current = nil
     self._conns   = {}
@@ -1359,7 +1368,7 @@ function Window:_enableDrag()
 end
 
 function Window:tab(config)
-    local tab = Tab.new(self, config)
+    local tab = Tab.new(self, config or {})
     table.insert(self._tabs, tab)
     if not self._current then self:selectTab(tab) end
     return tab
@@ -1379,7 +1388,7 @@ function Window:isVisible() return self._visible end
 
 function Window:setTheme(override)
     if type(override) ~= "table" then return end
-    self._theme = Theme.merge(self._theme, override)   -- merge into CURRENT theme
+    self._theme = Theme.merge(self._theme, override)
     local t = self._theme
     self._root.BackgroundColor3     = t.background
     self._titleBar.BackgroundColor3 = t.sidebar
@@ -1399,6 +1408,18 @@ end
 -- Public entry
 -- =========================================================
 local Axiom = {}
-function Axiom.new(config)    return Window.new(config)     end
-function Axiom.notify(config) return Notify.show(config)    end
+Axiom.build = AXIOM_BUILD
+
+function Axiom.new(config)
+    print(("[Axiom] build %s — new() called"):format(AXIOM_BUILD))
+    if type(config) ~= "table" then config = {} end
+    -- Normalize theme: string values (e.g. "dark") become nil → default theme
+    if type(config.theme) ~= "table" then config.theme = nil end
+    return Window.new(config)
+end
+
+function Axiom.notify(config)
+    return Notify.show(config or {})
+end
+
 return Axiom
