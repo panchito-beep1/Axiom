@@ -1,11 +1,11 @@
 --!nocheck
--- Axiom UI Library  •  build 1.0.2
--- If Axiom.build does not print "1.0.2", you are loading a STALE cached copy.
+-- Axiom UI Library  •  build 1.1.0  (developer-tool theme, purple accent)DDDDDDDDDDDDDDDDD
+-- If Axiom.build doesn't print "1.1.0", you're loading a stale cached copy.
 
 local Players          = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
 
-local AXIOM_BUILD = "1.0.2"
+local AXIOM_BUILD = "1.1.0"
 
 -- =========================================================
 -- Util
@@ -28,13 +28,13 @@ end
 
 function Util.corner(radius)
     local c = Instance.new("UICorner")
-    c.CornerRadius = UDim.new(0, radius or 4)
+    c.CornerRadius = UDim.new(0, radius or 2)
     return c
 end
 
 function Util.stroke(color, thickness)
     local s = Instance.new("UIStroke")
-    s.Color       = color or Color3.fromRGB(41, 41, 41)
+    s.Color       = color or Color3.fromRGB(52, 52, 52)
     s.Thickness   = thickness or 1
     s.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
     return s
@@ -55,7 +55,7 @@ function Util.listLayout(props)
     props = props or {}
     l.FillDirection = props.direction or Enum.FillDirection.Vertical
     l.SortOrder     = Enum.SortOrder.LayoutOrder
-    l.Padding       = UDim.new(0, props.gap or 4)
+    l.Padding       = UDim.new(0, props.gap or 3)
     if props.valign then l.VerticalAlignment   = props.valign end
     if props.halign then l.HorizontalAlignment = props.halign end
     return l
@@ -68,29 +68,43 @@ local Theme = {}
 local function rgb(r, g, b) return Color3.fromRGB(r, g, b) end
 
 Theme.Default = {
-    background   = rgb(16, 16, 16),
-    sidebar      = rgb(13, 13, 13),
-    surface      = rgb(28, 28, 28),
-    surfaceHover = rgb(38, 38, 38),
-    border       = rgb(41, 41, 41),
-    text         = rgb(229, 229, 229),
-    muted        = rgb(146, 146, 146),
-    dim          = rgb(90, 90, 90),
-    accent       = rgb(72, 199, 142),
-    success      = rgb(72, 199, 142),
-    warning      = rgb(230, 180, 80),
-    error        = rgb(220, 90, 90),
+    -- surfaces (tool-like flat grays, lifted off pure black)
+    background   = rgb(28, 28, 28),    -- #1C1C1C
+    sidebar      = rgb(22, 22, 22),    -- #161616
+    surface      = rgb(38, 38, 38),    -- #262626
+    surfaceHover = rgb(48, 48, 48),    -- #303030
+    border       = rgb(52, 52, 52),    -- #343434
+    borderLight  = rgb(64, 64, 64),    -- #404040
+
+    -- text
+    text         = rgb(210, 210, 210), -- #D2D2D2
+    muted        = rgb(140, 140, 140), -- #8C8C8C
+    dim          = rgb(90, 90, 90),    -- #5A5A5A
+
+    -- accent: muted purple (ImGui-ish, not neon)
+    accent       = rgb(140, 120, 200), -- #8C78C8
+    accentBright = rgb(168, 148, 228), -- #A894E4
+    accentDim    = rgb(96, 82, 140),   -- #60528C
+
+    success      = rgb(140, 120, 200),
+    warning      = rgb(220, 180, 100),
+    error        = rgb(200, 90, 90),
+
+    -- fonts
     font         = Enum.Font.Gotham,
     fontMedium   = Enum.Font.GothamMedium,
     fontBold     = Enum.Font.GothamBold,
-    fontSize     = 13,
-    fontSizeSm   = 11,
-    cornerRadius = 4,
-    rowHeight    = 32,
-    spacing      = 8,
+    fontCode     = Enum.Font.Code,
+
+    fontSize     = 12,
+    fontSizeSm   = 10,
+    fontSizeCode = 12,
+
+    cornerRadius = 2,
+    rowHeight    = 26,
+    spacing      = 6,
 }
 
--- BULLETPROOF: neither argument can ever be a non-table and cause pairs() to blow up.
 function Theme.merge(base, override)
     local out = {}
     if type(base) == "table" then
@@ -131,7 +145,7 @@ local function ensureNotifyGui()
         AnchorPoint = Vector2.new(1, 0),
         BackgroundTransparency = 1, Parent = notifyGui,
     })
-    Util.listLayout({ gap = 8 }).Parent = notifyContainer
+    Util.listLayout({ gap = 6 }).Parent = notifyContainer
 end
 
 function Notify.show(config)
@@ -148,7 +162,7 @@ function Notify.show(config)
     Util.corner(theme.cornerRadius).Parent = toast
     Util.stroke(theme.border, 1).Parent = toast
     Util.padding({ top = 10, bottom = 10, left = 12, right = 12 }).Parent = toast
-    Util.listLayout({ gap = 4 }).Parent = toast
+    Util.listLayout({ gap = 3 }).Parent = toast
 
     Util.create("Frame", {
         Size = UDim2.new(1, 0, 0, 2),
@@ -160,7 +174,7 @@ function Notify.show(config)
         Text = tostring(config.title or "Notification"),
         Font = theme.fontBold, TextSize = theme.fontSize,
         TextColor3 = theme.text, TextXAlignment = Enum.TextXAlignment.Left,
-        BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 18), Parent = toast,
+        BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 16), Parent = toast,
     })
     if config.message then
         Util.create("TextLabel", {
@@ -184,17 +198,18 @@ local Components = {}
 
 local function rowFrame(parent, theme, height)
     return Util.create("Frame", {
-        Size = UDim2.new(1, 0, 0, height or 32),
+        Size = UDim2.new(1, 0, 0, height or 28),
         BackgroundTransparency = 1, BorderSizePixel = 0, Parent = parent,
     })
 end
 
 local function describeRow(parent, theme, config, controlWidth)
+    local labelColor = config.disabled and theme.dim or theme.text
     Util.create("TextLabel", {
         Text = tostring(config.name or ""),
-        Font = theme.font, TextSize = theme.fontSize, TextColor3 = theme.text,
+        Font = theme.font, TextSize = theme.fontSize, TextColor3 = labelColor,
         TextXAlignment = Enum.TextXAlignment.Left, BackgroundTransparency = 1,
-        Size = UDim2.new(1, -(controlWidth or 80), 0, 18), Parent = parent,
+        Size = UDim2.new(1, -(controlWidth or 80), 0, 16), Parent = parent,
     })
     if config.description then
         Util.create("TextLabel", {
@@ -202,43 +217,48 @@ local function describeRow(parent, theme, config, controlWidth)
             Font = theme.font, TextSize = theme.fontSizeSm, TextColor3 = theme.muted,
             TextXAlignment = Enum.TextXAlignment.Left, TextWrapped = true,
             BackgroundTransparency = 1,
-            Size = UDim2.new(1, -(controlWidth or 80), 0, 14),
-            Position = UDim2.new(0, 0, 0, 20), Parent = parent,
+            Size = UDim2.new(1, -(controlWidth or 80), 0, 12),
+            Position = UDim2.new(0, 0, 0, 18), Parent = parent,
         })
     end
 end
 
--- ---------- Toggle ----------
+-- ---------- Toggle (compact square switch) ----------
 function Components.toggle(section, config)
     local theme = section._theme
     local value = config.default == true
     local listeners, enabled = {}, not config.disabled
-    local row = rowFrame(section._content, theme, config.description and 46 or 32)
-    describeRow(row, theme, config, 60)
+    local row = rowFrame(section._content, theme, config.description and 44 or 28)
+    describeRow(row, theme, config, 50)
 
-    local switch = Util.create("Frame", {
-        Size = UDim2.fromOffset(36, 20),
-        Position = UDim2.new(1, 0, 0, 6), AnchorPoint = Vector2.new(1, 0),
-        BackgroundColor3 = value and theme.accent or theme.surface,
+    local track = Util.create("Frame", {
+        Size = UDim2.fromOffset(32, 16),
+        Position = UDim2.new(1, 0, 0, 5), AnchorPoint = Vector2.new(1, 0),
+        BackgroundColor3 = value and theme.accentDim or theme.surface,
         BorderSizePixel = 0, Parent = row,
     })
-    Util.corner(10).Parent = switch
-    Util.stroke(theme.border, 1).Parent = switch
+    Util.corner(2).Parent = track
+    Util.stroke(value and theme.accent or theme.border, 1).Parent = track
 
     local knob = Util.create("Frame", {
-        Size = UDim2.fromOffset(16, 16),
-        Position = value and UDim2.new(1, -18, 0, 2) or UDim2.new(0, 2, 0, 2),
-        BackgroundColor3 = Color3.new(1, 1, 1), BorderSizePixel = 0, Parent = switch,
+        Size = UDim2.fromOffset(12, 12),
+        Position = value and UDim2.new(1, -14, 0, 2) or UDim2.new(0, 2, 0, 2),
+        BackgroundColor3 = value and theme.accentBright or theme.dim,
+        BorderSizePixel = 0, Parent = track,
     })
-    Util.corner(8).Parent = knob
+    Util.corner(1).Parent = knob
 
     local clicker = Util.create("TextButton", {
-        Text = "", BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), Parent = row,
+        Text = "", BackgroundTransparency = 1,
+        Size = UDim2.fromScale(1, 1), Parent = row,
     })
 
     local function render()
-        switch.BackgroundColor3 = value and theme.accent or theme.surface
-        knob.Position = value and UDim2.new(1, -18, 0, 2) or UDim2.new(0, 2, 0, 2)
+        track.BackgroundColor3 = value and theme.accentDim or theme.surface
+        knob.BackgroundColor3  = value and theme.accentBright or theme.dim
+        knob.Position = value and UDim2.new(1, -14, 0, 2) or UDim2.new(0, 2, 0, 2)
+        local s = track:FindFirstChildOfClass("UIStroke")
+        if s then s.Color = value and theme.accent or theme.border end
     end
 
     local obj = { _root = row }
@@ -252,22 +272,21 @@ function Components.toggle(section, config)
         end
     end
     function obj:onChanged(cb) table.insert(listeners, cb); return obj end
-    function obj:destroy() row:Destroy() end
     local conn = clicker.MouseButton1Click:Connect(function()
         if enabled then obj:set(not value) end
     end)
     local orig = obj.destroy
-    function obj:destroy() conn:Disconnect(); orig() end
+    function obj:destroy() conn:Disconnect(); row:Destroy() end
     return obj
 end
 
--- ---------- Button ----------
+-- ---------- Button (flat with hover) ----------
 function Components.button(section, config)
     local theme = section._theme
     local enabled, listeners = not config.disabled, {}
 
     local btn = Util.create("TextButton", {
-        Size = UDim2.new(1, 0, 0, 30),
+        Size = UDim2.new(1, 0, 0, 26),
         BackgroundColor3 = theme.surface, BorderSizePixel = 0,
         Text = "", AutoButtonColor = false, Parent = section._content,
     })
@@ -275,9 +294,15 @@ function Components.button(section, config)
     Util.stroke(theme.border, 1).Parent = btn
     Util.create("TextLabel", {
         Text = tostring(config.name or "Button"),
-        Font = theme.fontMedium, TextSize = theme.fontSize, TextColor3 = theme.text,
+        Font = theme.fontMedium, TextSize = theme.fontSize,
+        TextColor3 = config.disabled and theme.dim or theme.text,
         BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), Parent = btn,
     })
+
+    if enabled then
+        btn.MouseEnter:Connect(function() btn.BackgroundColor3 = theme.surfaceHover end)
+        btn.MouseLeave:Connect(function() btn.BackgroundColor3 = theme.surface end)
+    end
 
     local obj = { _root = btn }
     function obj:fire()
@@ -291,7 +316,7 @@ function Components.button(section, config)
     return obj
 end
 
--- ---------- Slider ----------
+-- ---------- Slider (thin track, mono readout) ----------
 function Components.slider(section, config)
     local theme = section._theme
     local min, max = config.min or 0, config.max or 100
@@ -299,8 +324,8 @@ function Components.slider(section, config)
     local value    = config.default or min
     local showVal  = config.showValue ~= false
     local listeners, enabled = {}, not config.disabled
-    local descH    = config.description and 52 or 42
-    local trackY   = config.description and 40 or 28
+    local descH    = config.description and 50 or 40
+    local trackY   = config.description and 38 or 26
 
     local row = rowFrame(section._content, theme, descH)
     describeRow(row, theme, config, 80)
@@ -309,38 +334,39 @@ function Components.slider(section, config)
     if showVal then
         valueLabel = Util.create("TextLabel", {
             Text = tostring(value),
-            Font = theme.fontMedium, TextSize = 12, TextColor3 = theme.muted,
+            Font = theme.fontCode, TextSize = theme.fontSizeCode,
+            TextColor3 = theme.muted,
             TextXAlignment = Enum.TextXAlignment.Right, BackgroundTransparency = 1,
-            Size = UDim2.new(0, 60, 0, 18),
+            Size = UDim2.new(0, 60, 0, 16),
             Position = UDim2.new(1, 0, 0, 0), Parent = row,
         })
     end
 
     local track = Util.create("Frame", {
-        Size = UDim2.new(1, 0, 0, 4),
+        Size = UDim2.new(1, 0, 0, 3),
         Position = UDim2.new(0, 0, 0, trackY),
         BackgroundColor3 = theme.surface, BorderSizePixel = 0, Parent = row,
     })
-    Util.corner(2).Parent = track
+    Util.corner(1).Parent = track
 
     local fill = Util.create("Frame", {
         Size = UDim2.new((value - min) / (max - min), 0, 1, 0),
         BackgroundColor3 = theme.accent, BorderSizePixel = 0, Parent = track,
     })
-    Util.corner(2).Parent = fill
+    Util.corner(1).Parent = fill
 
     local knob = Util.create("Frame", {
-        Size = UDim2.fromOffset(10, 10),
+        Size = UDim2.fromOffset(8, 12),
         Position = UDim2.new((value - min) / (max - min), 0, 0.5, 0),
         AnchorPoint = Vector2.new(0.5, 0.5),
-        BackgroundColor3 = Color3.new(1, 1, 1), BorderSizePixel = 0, Parent = track,
+        BackgroundColor3 = theme.accentBright, BorderSizePixel = 0, Parent = track,
     })
-    Util.corner(5).Parent = knob
+    Util.corner(1).Parent = knob
 
     local hitbox = Util.create("TextButton", {
         Text = "", BackgroundTransparency = 1,
-        Size = UDim2.new(1, 0, 0, 22),
-        Position = UDim2.new(0, 0, 0, trackY - 9), Parent = row,
+        Size = UDim2.new(1, 0, 0, 20),
+        Position = UDim2.new(0, 0, 0, trackY - 8), Parent = row,
     })
 
     local function snap(v)
@@ -372,7 +398,6 @@ function Components.slider(section, config)
         end
     end
     function obj:onChanged(cb) table.insert(listeners, cb); return obj end
-    function obj:destroy() row:Destroy() end
 
     local dragConns = {}
     local function stopDrag()
@@ -401,7 +426,7 @@ function Components.slider(section, config)
         end))
     end)
     local orig = obj.destroy
-    function obj:destroy() stopDrag(); orig() end
+    function obj:destroy() stopDrag(); row:Destroy() end
     render()
     return obj
 end
@@ -414,12 +439,12 @@ function Components.dropdown(section, config)
     local listeners, enabled = {}, not config.disabled
     local popup, backdrop
 
-    local row = rowFrame(section._content, theme, config.description and 46 or 32)
-    describeRow(row, theme, config, 160)
+    local row = rowFrame(section._content, theme, config.description and 44 or 28)
+    describeRow(row, theme, config, 150)
 
     local btn = Util.create("TextButton", {
-        Text = "", Size = UDim2.new(0, 150, 0, 24),
-        Position = UDim2.new(1, 0, 0, 4), AnchorPoint = Vector2.new(1, 0),
+        Text = "", Size = UDim2.new(0, 140, 0, 22),
+        Position = UDim2.new(1, 0, 0, 3), AnchorPoint = Vector2.new(1, 0),
         BackgroundColor3 = theme.surface, BorderSizePixel = 0,
         AutoButtonColor = false, Parent = row,
     })
@@ -428,13 +453,13 @@ function Components.dropdown(section, config)
 
     local valueLbl = Util.create("TextLabel", {
         Text = tostring(value or ""),
-        Font = theme.font, TextSize = 12, TextColor3 = theme.text,
+        Font = theme.fontCode, TextSize = theme.fontSizeCode, TextColor3 = theme.text,
         TextXAlignment = Enum.TextXAlignment.Left, BackgroundTransparency = 1,
         Size = UDim2.new(1, -22, 1, 0), Position = UDim2.new(0, 8, 0, 0), Parent = btn,
     })
     Util.create("TextLabel", {
-        Text = "▾", Font = theme.font, TextSize = 12, TextColor3 = theme.muted,
-        BackgroundTransparency = 1, Size = UDim2.fromOffset(14, 24),
+        Text = "▾", Font = theme.fontCode, TextSize = 10, TextColor3 = theme.muted,
+        BackgroundTransparency = 1, Size = UDim2.fromOffset(14, 22),
         Position = UDim2.new(1, -18, 0, 0), Parent = btn,
     })
 
@@ -472,31 +497,40 @@ function Components.dropdown(section, config)
         backdrop.MouseButton1Click:Connect(closePopup)
 
         local btnAbs, winAbs = btn.AbsolutePosition, win._root.AbsolutePosition
-        local rowH = math.min(#options * 26 + 8, 200)
+        local rowH = math.min(#options * 24 + 6, 200)
         popup = Util.create("ScrollingFrame", {
-            Size = UDim2.fromOffset(150, rowH),
-            Position = UDim2.fromOffset(btnAbs.X - winAbs.X, btnAbs.Y - winAbs.Y + 28),
+            Size = UDim2.fromOffset(140, rowH),
+            Position = UDim2.fromOffset(btnAbs.X - winAbs.X, btnAbs.Y - winAbs.Y + 26),
             BackgroundColor3 = theme.surface, BorderSizePixel = 0,
             ScrollBarThickness = 2, ScrollBarImageColor3 = theme.border,
             CanvasSize = UDim2.new(), AutomaticCanvasSize = Enum.AutomaticSize.Y,
             ZIndex = 999, Parent = win._root,
         })
         Util.corner(theme.cornerRadius).Parent = popup
-        Util.stroke(theme.border, 1).Parent = popup
-        Util.padding({ top = 4, bottom = 4 }).Parent = popup
-        Util.listLayout({ gap = 1 }).Parent = popup
+        Util.stroke(theme.borderLight, 1).Parent = popup
+        Util.padding({ top = 2, bottom = 2 }).Parent = popup
+        Util.listLayout({ gap = 0 }).Parent = popup
 
         for _, opt in ipairs(options) do
+            local isSel = (opt == value)
             local item = Util.create("TextButton", {
                 Text = tostring(opt),
-                Font = theme.font, TextSize = 12,
-                TextColor3 = (opt == value) and theme.accent or theme.text,
+                Font = theme.fontCode, TextSize = theme.fontSizeCode,
+                TextColor3 = isSel and theme.accentBright or theme.text,
                 TextXAlignment = Enum.TextXAlignment.Left, BackgroundTransparency = 1,
                 BorderSizePixel = 0, Size = UDim2.new(1, 0, 0, 22),
                 AutoButtonColor = false, ZIndex = 1000, Parent = popup,
             })
-            Util.create("UIPadding", { PaddingLeft = UDim.new(0, 6), Parent = item })
-            item.MouseEnter:Connect(function() item.BackgroundColor3 = theme.surface end)
+            Util.create("UIPadding", { PaddingLeft = UDim.new(0, 8), Parent = item })
+            if isSel then
+                Util.create("Frame", {
+                    Size = UDim2.new(0, 2, 1, 0), Position = UDim2.new(0, 0, 0, 0),
+                    BackgroundColor3 = theme.accent, BorderSizePixel = 0,
+                    ZIndex = 1001, Parent = item,
+                })
+            end
+            item.MouseEnter:Connect(function() item.BackgroundTransparency = 0;
+                item.BackgroundColor3 = theme.surfaceHover end)
             item.MouseLeave:Connect(function() item.BackgroundTransparency = 1 end)
             item.MouseButton1Click:Connect(function() select(opt) end)
         end
@@ -507,7 +541,7 @@ function Components.dropdown(section, config)
         if popup then closePopup() else openPopup() end
     end)
     local orig = obj.destroy
-    function obj:destroy() conn:Disconnect(); closePopup(); orig() end
+    function obj:destroy() conn:Disconnect(); closePopup(); row:Destroy() end
     return obj
 end
 
@@ -520,12 +554,12 @@ function Components.multidropdown(section, config)
     local listeners, enabled = {}, not config.disabled
     local popup, backdrop
 
-    local row = rowFrame(section._content, theme, config.description and 46 or 32)
-    describeRow(row, theme, config, 160)
+    local row = rowFrame(section._content, theme, config.description and 44 or 28)
+    describeRow(row, theme, config, 150)
 
     local btn = Util.create("TextButton", {
-        Text = "", Size = UDim2.new(0, 150, 0, 24),
-        Position = UDim2.new(1, 0, 0, 4), AnchorPoint = Vector2.new(1, 0),
+        Text = "", Size = UDim2.new(0, 140, 0, 22),
+        Position = UDim2.new(1, 0, 0, 3), AnchorPoint = Vector2.new(1, 0),
         BackgroundColor3 = theme.surface, BorderSizePixel = 0,
         AutoButtonColor = false, Parent = row,
     })
@@ -533,13 +567,14 @@ function Components.multidropdown(section, config)
     Util.stroke(theme.border, 1).Parent = btn
 
     local valueLbl = Util.create("TextLabel", {
-        Text = "", Font = theme.font, TextSize = 12, TextColor3 = theme.text,
-        TextXAlignment = Enum.TextXAlignment.Left, BackgroundTransparency = 1,
-        Size = UDim2.new(1, -22, 1, 0), Position = UDim2.new(0, 8, 0, 0), Parent = btn,
+        Text = "", Font = theme.fontCode, TextSize = theme.fontSizeCode,
+        TextColor3 = theme.text, TextXAlignment = Enum.TextXAlignment.Left,
+        BackgroundTransparency = 1, Size = UDim2.new(1, -22, 1, 0),
+        Position = UDim2.new(0, 8, 0, 0), Parent = btn,
     })
     Util.create("TextLabel", {
-        Text = "▾", Font = theme.font, TextSize = 12, TextColor3 = theme.muted,
-        BackgroundTransparency = 1, Size = UDim2.fromOffset(14, 24),
+        Text = "▾", Font = theme.fontCode, TextSize = 10, TextColor3 = theme.muted,
+        BackgroundTransparency = 1, Size = UDim2.fromOffset(14, 22),
         Position = UDim2.new(1, -18, 0, 0), Parent = btn,
     })
 
@@ -591,30 +626,31 @@ function Components.multidropdown(section, config)
         backdrop.MouseButton1Click:Connect(closePopup)
 
         local btnAbs, winAbs = btn.AbsolutePosition, win._root.AbsolutePosition
-        local rowH = math.min(#options * 26 + 8, 200)
+        local rowH = math.min(#options * 24 + 6, 200)
         popup = Util.create("ScrollingFrame", {
-            Size = UDim2.fromOffset(150, rowH),
-            Position = UDim2.fromOffset(btnAbs.X - winAbs.X, btnAbs.Y - winAbs.Y + 28),
+            Size = UDim2.fromOffset(140, rowH),
+            Position = UDim2.fromOffset(btnAbs.X - winAbs.X, btnAbs.Y - winAbs.Y + 26),
             BackgroundColor3 = theme.surface, BorderSizePixel = 0,
             ScrollBarThickness = 2, ScrollBarImageColor3 = theme.border,
             CanvasSize = UDim2.new(), AutomaticCanvasSize = Enum.AutomaticSize.Y,
             ZIndex = 999, Parent = win._root,
         })
         Util.corner(theme.cornerRadius).Parent = popup
-        Util.stroke(theme.border, 1).Parent = popup
-        Util.padding({ top = 4, bottom = 4 }).Parent = popup
-        Util.listLayout({ gap = 1 }).Parent = popup
+        Util.stroke(theme.borderLight, 1).Parent = popup
+        Util.padding({ top = 2, bottom = 2 }).Parent = popup
+        Util.listLayout({ gap = 0 }).Parent = popup
 
         for _, opt in ipairs(options) do
+            local isSel = selected[opt]
             local item = Util.create("TextButton", {
-                Text = (selected[opt] and "✓ " or "   ") .. tostring(opt),
-                Font = theme.font, TextSize = 12,
-                TextColor3 = selected[opt] and theme.accent or theme.text,
+                Text = (isSel and "✓ " or "  ") .. tostring(opt),
+                Font = theme.fontCode, TextSize = theme.fontSizeCode,
+                TextColor3 = isSel and theme.accentBright or theme.text,
                 TextXAlignment = Enum.TextXAlignment.Left, BackgroundTransparency = 1,
                 BorderSizePixel = 0, Size = UDim2.new(1, 0, 0, 22),
                 AutoButtonColor = false, ZIndex = 1000, Parent = popup,
             })
-            Util.create("UIPadding", { PaddingLeft = UDim.new(0, 6), Parent = item })
+            Util.create("UIPadding", { PaddingLeft = UDim.new(0, 8), Parent = item })
             item.MouseButton1Click:Connect(function()
                 toggleOption(opt); closePopup(); openPopup()
             end)
@@ -626,7 +662,7 @@ function Components.multidropdown(section, config)
         if popup then closePopup() else openPopup() end
     end)
     local orig = obj.destroy
-    function obj:destroy() conn:Disconnect(); closePopup(); orig() end
+    function obj:destroy() conn:Disconnect(); closePopup(); row:Destroy() end
     return obj
 end
 
@@ -636,22 +672,25 @@ function Components.input(section, config)
     local value = tostring(config.default or "")
     local listeners, enabled = {}, not config.disabled
 
-    local row = rowFrame(section._content, theme, config.description and 46 or 32)
-    describeRow(row, theme, config, 160)
+    local row = rowFrame(section._content, theme, config.description and 44 or 28)
+    describeRow(row, theme, config, 150)
 
     local box = Util.create("TextBox", {
         Text = value, PlaceholderText = config.placeholder or "",
-        PlaceholderColor3 = theme.dim, Font = theme.font,
-        TextSize = 12, TextColor3 = theme.text,
+        PlaceholderColor3 = theme.dim, Font = theme.fontCode,
+        TextSize = theme.fontSizeCode, TextColor3 = theme.text,
         TextXAlignment = Enum.TextXAlignment.Left,
         BackgroundColor3 = theme.surface, BorderSizePixel = 0,
         ClearTextOnFocus = false,
-        Size = UDim2.new(0, 150, 0, 24),
-        Position = UDim2.new(1, 0, 0, 4), AnchorPoint = Vector2.new(1, 0), Parent = row,
+        Size = UDim2.new(0, 140, 0, 22),
+        Position = UDim2.new(1, 0, 0, 3), AnchorPoint = Vector2.new(1, 0), Parent = row,
     })
     Util.corner(theme.cornerRadius).Parent = box
-    Util.stroke(theme.border, 1).Parent = box
+    local stroke = Util.stroke(theme.border, 1); stroke.Parent = box
     Util.padding({ left = 6, right = 6 }).Parent = box
+
+    box.Focused:Connect(function() stroke.Color = theme.accent end)
+    box.FocusLost:Connect(function() stroke.Color = theme.border end)
 
     local obj = { _root = row }
     function obj:get() return value end
@@ -671,7 +710,7 @@ function Components.input(section, config)
         for _, cb in ipairs(listeners) do cb(value) end
     end)
     local orig = obj.destroy
-    function obj:destroy() conn:Disconnect(); orig() end
+    function obj:destroy() conn:Disconnect(); row:Destroy() end
     return obj
 end
 
@@ -682,22 +721,25 @@ function Components.numberinput(section, config)
     local value = config.default or 0
     local listeners, enabled = {}, not config.disabled
 
-    local row = rowFrame(section._content, theme, config.description and 46 or 32)
-    describeRow(row, theme, config, 160)
+    local row = rowFrame(section._content, theme, config.description and 44 or 28)
+    describeRow(row, theme, config, 150)
 
     local box = Util.create("TextBox", {
         Text = tostring(value), PlaceholderText = config.placeholder or "0",
-        PlaceholderColor3 = theme.dim, Font = theme.font,
-        TextSize = 12, TextColor3 = theme.text,
+        PlaceholderColor3 = theme.dim, Font = theme.fontCode,
+        TextSize = theme.fontSizeCode, TextColor3 = theme.text,
         TextXAlignment = Enum.TextXAlignment.Left,
         BackgroundColor3 = theme.surface, BorderSizePixel = 0,
         ClearTextOnFocus = false,
-        Size = UDim2.new(0, 150, 0, 24),
-        Position = UDim2.new(1, 0, 0, 4), AnchorPoint = Vector2.new(1, 0), Parent = row,
+        Size = UDim2.new(0, 140, 0, 22),
+        Position = UDim2.new(1, 0, 0, 3), AnchorPoint = Vector2.new(1, 0), Parent = row,
     })
     Util.corner(theme.cornerRadius).Parent = box
-    Util.stroke(theme.border, 1).Parent = box
+    local stroke = Util.stroke(theme.border, 1); stroke.Parent = box
     Util.padding({ left = 6, right = 6 }).Parent = box
+
+    box.Focused:Connect(function() stroke.Color = theme.accent end)
+    box.FocusLost:Connect(function() stroke.Color = theme.border end)
 
     local obj = { _root = row }
     function obj:get() return value end
@@ -713,7 +755,7 @@ function Components.numberinput(section, config)
     end
     local conn = box.FocusLost:Connect(function() obj:set(box.Text) end)
     local orig = obj.destroy
-    function obj:destroy() conn:Disconnect(); orig() end
+    function obj:destroy() conn:Disconnect(); row:Destroy() end
     return obj
 end
 
@@ -724,12 +766,12 @@ function Components.keybind(section, config)
     local listeners, enabled = {}, not config.disabled
     local capturing, captureConn = false, nil
 
-    local row = rowFrame(section._content, theme, config.description and 46 or 32)
-    describeRow(row, theme, config, 160)
+    local row = rowFrame(section._content, theme, config.description and 44 or 28)
+    describeRow(row, theme, config, 150)
 
     local btn = Util.create("TextButton", {
-        Text = "", Size = UDim2.new(0, 150, 0, 24),
-        Position = UDim2.new(1, 0, 0, 4), AnchorPoint = Vector2.new(1, 0),
+        Text = "", Size = UDim2.new(0, 140, 0, 22),
+        Position = UDim2.new(1, 0, 0, 3), AnchorPoint = Vector2.new(1, 0),
         BackgroundColor3 = theme.surface, BorderSizePixel = 0,
         AutoButtonColor = false, Parent = row,
     })
@@ -738,7 +780,7 @@ function Components.keybind(section, config)
 
     local valLbl = Util.create("TextLabel", {
         Text = (typeof(value) == "EnumItem") and value.Name or "None",
-        Font = theme.font, TextSize = 12, TextColor3 = theme.text,
+        Font = theme.fontCode, TextSize = theme.fontSizeCode, TextColor3 = theme.text,
         TextXAlignment = Enum.TextXAlignment.Left, BackgroundTransparency = 1,
         Size = UDim2.new(1, -16, 1, 0), Position = UDim2.new(0, 8, 0, 0), Parent = btn,
     })
@@ -747,10 +789,12 @@ function Components.keybind(section, config)
         capturing = false
         if captureConn then captureConn:Disconnect(); captureConn = nil end
         valLbl.Text = (typeof(value) == "EnumItem") and value.Name or "None"
+        valLbl.TextColor3 = theme.text
     end
     local function startCapture()
         capturing = true
         valLbl.Text = "[press key…]"
+        valLbl.TextColor3 = theme.accentBright
         captureConn = UserInputService.InputBegan:Connect(function(input, gp)
             if gp then return end
             if input.UserInputType ~= Enum.UserInputType.Keyboard then return end
@@ -783,7 +827,7 @@ function Components.keybind(section, config)
         if capturing then stopCapture() else startCapture() end
     end)
     local orig = obj.destroy
-    function obj:destroy() conn:Disconnect(); stopCapture(); orig() end
+    function obj:destroy() conn:Disconnect(); stopCapture(); row:Destroy() end
     return obj
 end
 
@@ -794,17 +838,28 @@ function Components.colorpicker(section, config)
     local listeners, enabled = {}, not config.disabled
     local popup, backdrop
 
-    local row = rowFrame(section._content, theme, config.description and 46 or 32)
-    describeRow(row, theme, config, 60)
+    local row = rowFrame(section._content, theme, config.description and 44 or 28)
+    describeRow(row, theme, config, 130)
 
     local swatch = Util.create("TextButton", {
-        Text = "", Size = UDim2.fromOffset(48, 22),
-        Position = UDim2.new(1, 0, 0, 5), AnchorPoint = Vector2.new(1, 0),
+        Text = "", Size = UDim2.fromOffset(20, 20),
+        Position = UDim2.new(1, -82, 0, 4), AnchorPoint = Vector2.new(1, 0),
         BackgroundColor3 = color, BorderSizePixel = 0,
         AutoButtonColor = false, Parent = row,
     })
     Util.corner(theme.cornerRadius).Parent = swatch
     Util.stroke(theme.border, 1).Parent = swatch
+
+    local hexLbl = Util.create("TextLabel", {
+        Text = string.format("#%02X%02X%02X",
+            math.floor(color.R * 255 + 0.5),
+            math.floor(color.G * 255 + 0.5),
+            math.floor(color.B * 255 + 0.5)),
+        Font = theme.fontCode, TextSize = theme.fontSizeCode, TextColor3 = theme.muted,
+        TextXAlignment = Enum.TextXAlignment.Right, BackgroundTransparency = 1,
+        Size = UDim2.new(0, 58, 0, 20), Position = UDim2.new(1, 0, 0, 4),
+        Parent = row,
+    })
 
     local obj = { _root = row }
     function obj:get() return color end
@@ -812,6 +867,10 @@ function Components.colorpicker(section, config)
     function obj:set(c, silent)
         if not enabled then return end
         color = c; swatch.BackgroundColor3 = c
+        hexLbl.Text = string.format("#%02X%02X%02X",
+            math.floor(c.R * 255 + 0.5),
+            math.floor(c.G * 255 + 0.5),
+            math.floor(c.B * 255 + 0.5))
         if not silent then
             if config.callback then config.callback(c) end
             for _, cb in ipairs(listeners) do cb(c) end
@@ -834,13 +893,13 @@ function Components.colorpicker(section, config)
 
         local sAbs, wAbs = swatch.AbsolutePosition, win._root.AbsolutePosition
         popup = Util.create("Frame", {
-            Size = UDim2.fromOffset(220, 130),
-            Position = UDim2.fromOffset(sAbs.X - wAbs.X - 170, sAbs.Y - wAbs.Y + 28),
+            Size = UDim2.fromOffset(220, 120),
+            Position = UDim2.fromOffset(sAbs.X - wAbs.X - 130, sAbs.Y - wAbs.Y + 26),
             BackgroundColor3 = theme.surface, BorderSizePixel = 0,
             ZIndex = 999, Parent = win._root,
         })
         Util.corner(theme.cornerRadius).Parent = popup
-        Util.stroke(theme.border, 1).Parent = popup
+        Util.stroke(theme.borderLight, 1).Parent = popup
         Util.padding({ top = 8, bottom = 8, left = 8, right = 8 }).Parent = popup
         Util.listLayout({ gap = 6 }).Parent = popup
 
@@ -851,32 +910,32 @@ function Components.colorpicker(section, config)
         }
         for _, key in ipairs({ "R", "G", "B" }) do
             local line = Util.create("Frame", {
-                Size = UDim2.new(1, 0, 0, 24), BackgroundTransparency = 1,
+                Size = UDim2.new(1, 0, 0, 22), BackgroundTransparency = 1,
                 ZIndex = 1000, Parent = popup,
             })
             Util.create("TextLabel", {
-                Text = key, Font = theme.font, TextSize = 12, TextColor3 = theme.muted,
-                BackgroundTransparency = 1, Size = UDim2.fromOffset(16, 24),
-                ZIndex = 1000, Parent = line,
+                Text = key, Font = theme.fontCode, TextSize = theme.fontSizeCode,
+                TextColor3 = theme.muted, BackgroundTransparency = 1,
+                Size = UDim2.fromOffset(16, 22), ZIndex = 1000, Parent = line,
             })
             local track = Util.create("Frame", {
-                Size = UDim2.new(1, -50, 0, 4),
+                Size = UDim2.new(1, -52, 0, 3),
                 Position = UDim2.new(0, 20, 0.5, 0),
                 BackgroundColor3 = theme.background, BorderSizePixel = 0,
                 ZIndex = 1000, Parent = line,
             })
-            Util.corner(2).Parent = track
+            Util.corner(1).Parent = track
             local fill = Util.create("Frame", {
                 Size = UDim2.new(values[key] / 255, 0, 1, 0),
                 BackgroundColor3 = theme.accent, BorderSizePixel = 0,
                 ZIndex = 1000, Parent = track,
             })
-            Util.corner(2).Parent = fill
+            Util.corner(1).Parent = fill
             local box = Util.create("TextBox", {
-                Text = tostring(values[key]), Font = theme.font,
-                TextSize = 12, TextColor3 = theme.text, BackgroundTransparency = 1,
-                BorderSizePixel = 0, Size = UDim2.fromOffset(36, 24),
-                Position = UDim2.new(1, -36, 0, 0),
+                Text = tostring(values[key]), Font = theme.fontCode,
+                TextSize = theme.fontSizeCode, TextColor3 = theme.text,
+                BackgroundTransparency = 1, BorderSizePixel = 0,
+                Size = UDim2.fromOffset(36, 22), Position = UDim2.new(1, -36, 0, 0),
                 TextXAlignment = Enum.TextXAlignment.Right,
                 ClearTextOnFocus = false, ZIndex = 1000, Parent = line,
             })
@@ -887,18 +946,6 @@ function Components.colorpicker(section, config)
                 obj:set(Color3.fromRGB(values.R, values.G, values.B))
             end)
         end
-        local hex = Util.create("TextLabel", {
-            Text = string.format("#%02X%02X%02X", values.R, values.G, values.B),
-            Font = theme.font, TextSize = 12, TextColor3 = theme.text,
-            BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 20),
-            ZIndex = 1000, Parent = popup,
-        })
-        obj:onChanged(function(c)
-            hex.Text = string.format("#%02X%02X%02X",
-                math.floor(c.R * 255 + 0.5),
-                math.floor(c.G * 255 + 0.5),
-                math.floor(c.B * 255 + 0.5))
-        end)
     end
 
     local conn = swatch.MouseButton1Click:Connect(function()
@@ -906,14 +953,14 @@ function Components.colorpicker(section, config)
         if popup then closePopup() else openPopup() end
     end)
     local orig = obj.destroy
-    function obj:destroy() conn:Disconnect(); closePopup(); orig() end
+    function obj:destroy() conn:Disconnect(); closePopup(); row:Destroy() end
     return obj
 end
 
 -- ---------- Label ----------
 function Components.label(section, config)
     local theme = section._theme
-    local row = rowFrame(section._content, theme, 20)
+    local row = rowFrame(section._content, theme, 18)
     local lbl = Util.create("TextLabel", {
         Text = tostring(config.name or ""), Font = theme.font,
         TextSize = theme.fontSize,
@@ -963,29 +1010,32 @@ function Components.checkbox(section, config)
     local checked = config.default == true
     local listeners, enabled = {}, not config.disabled
 
-    local row = rowFrame(section._content, theme, 24)
+    local row = rowFrame(section._content, theme, 22)
     local btn = Util.create("TextButton", {
         Text = "", BackgroundTransparency = 1,
         Size = UDim2.fromScale(1, 1), AutoButtonColor = false, Parent = row,
     })
     local box = Util.create("Frame", {
-        Size = UDim2.fromOffset(14, 14),
+        Size = UDim2.fromOffset(12, 12),
         Position = UDim2.new(0, 0, 0.5, 0), AnchorPoint = Vector2.new(0, 0.5),
-        BackgroundColor3 = theme.surface, BorderSizePixel = 0, Parent = row,
+        BackgroundColor3 = checked and theme.accentDim or theme.surface,
+        BorderSizePixel = 0, Parent = row,
     })
-    Util.corner(2).Parent = box
-    Util.stroke(theme.border, 1).Parent = box
+    Util.corner(1).Parent = box
+    local stroke = Util.stroke(checked and theme.accent or theme.border, 1)
+    stroke.Parent = box
     local check = Util.create("TextLabel", {
-        Text = "✓", Font = theme.fontBold, TextSize = 12,
-        TextColor3 = theme.accent, BackgroundTransparency = 1,
+        Text = "✓", Font = theme.fontBold, TextSize = 10,
+        TextColor3 = theme.accentBright, BackgroundTransparency = 1,
         Size = UDim2.fromScale(1, 1), Parent = box,
     })
     check.Visible = checked
     Util.create("TextLabel", {
         Text = tostring(config.name or "Checkbox"),
-        Font = theme.font, TextSize = theme.fontSize, TextColor3 = theme.text,
+        Font = theme.font, TextSize = theme.fontSize,
+        TextColor3 = config.disabled and theme.dim or theme.text,
         TextXAlignment = Enum.TextXAlignment.Left, BackgroundTransparency = 1,
-        Size = UDim2.new(1, -22, 1, 0), Position = UDim2.new(0, 22, 0, 0),
+        Size = UDim2.new(1, -20, 1, 0), Position = UDim2.new(0, 20, 0, 0),
         Parent = row,
     })
 
@@ -995,6 +1045,8 @@ function Components.checkbox(section, config)
     function obj:set(v, silent)
         if not enabled then return end
         checked = v; check.Visible = v
+        box.BackgroundColor3 = v and theme.accentDim or theme.surface
+        stroke.Color = v and theme.accent or theme.border
         if not silent then
             if config.callback then config.callback(v) end
             for _, cb in ipairs(listeners) do cb(v) end
@@ -1002,7 +1054,7 @@ function Components.checkbox(section, config)
     end
     local conn = btn.MouseButton1Click:Connect(function() obj:set(not checked) end)
     local orig = obj.destroy
-    function obj:destroy() conn:Disconnect(); orig() end
+    function obj:destroy() conn:Disconnect(); row:Destroy() end
     return obj
 end
 
@@ -1011,30 +1063,30 @@ function Components.progress(section, config)
     local theme = section._theme
     local value = math.clamp(config.default or 0, 0, 1)
 
-    local row = rowFrame(section._content, theme, 28)
+    local row = rowFrame(section._content, theme, 26)
     Util.create("TextLabel", {
         Text = tostring(config.name or "Progress"),
         Font = theme.font, TextSize = theme.fontSize, TextColor3 = theme.text,
         TextXAlignment = Enum.TextXAlignment.Left, BackgroundTransparency = 1,
-        Size = UDim2.new(1, -50, 0, 16), Parent = row,
+        Size = UDim2.new(1, -50, 0, 14), Parent = row,
     })
     local valLbl = Util.create("TextLabel", {
         Text = tostring(math.floor(value * 100 + 0.5)) .. "%",
-        Font = theme.fontMedium, TextSize = 11, TextColor3 = theme.muted,
+        Font = theme.fontCode, TextSize = theme.fontSizeCode, TextColor3 = theme.muted,
         TextXAlignment = Enum.TextXAlignment.Right, BackgroundTransparency = 1,
-        Size = UDim2.new(0, 40, 0, 16), Position = UDim2.new(1, 0, 0, 0), Parent = row,
+        Size = UDim2.new(0, 40, 0, 14), Position = UDim2.new(1, 0, 0, 0), Parent = row,
     })
     local bar = Util.create("Frame", {
-        Size = UDim2.new(1, 0, 0, 4), Position = UDim2.new(0, 0, 0, 20),
+        Size = UDim2.new(1, 0, 0, 3), Position = UDim2.new(0, 0, 0, 18),
         BackgroundColor3 = theme.surface, BorderSizePixel = 0, Parent = row,
     })
-    Util.corner(2).Parent = bar
+    Util.corner(1).Parent = bar
     local fill = Util.create("Frame", {
         Size = UDim2.new(value, 0, 1, 0),
         BackgroundColor3 = config.color or theme.accent, BorderSizePixel = 0,
         Parent = bar,
     })
-    Util.corner(2).Parent = fill
+    Util.corner(1).Parent = fill
 
     local obj = { _root = row }
     function obj:get() return value end
@@ -1051,15 +1103,16 @@ end
 function Components.badge(section, config)
     local theme = section._theme
     local color = config.color or theme.accent
-    local row = rowFrame(section._content, theme, 20)
+    local row = rowFrame(section._content, theme, 18)
     local pill = Util.create("Frame", {
-        Size = UDim2.fromOffset(config.width or 60, 18),
-        BackgroundColor3 = color, BackgroundTransparency = 0.8,
+        Size = UDim2.fromOffset(config.width or 56, 16),
+        BackgroundColor3 = color, BackgroundTransparency = 0.82,
         BorderSizePixel = 0, Parent = row,
     })
-    Util.corner(9).Parent = pill
+    Util.corner(2).Parent = pill
+    Util.stroke(color, 1).Parent = pill
     Util.create("TextLabel", {
-        Text = tostring(config.name or "Badge"), Font = theme.fontMedium,
+        Text = tostring(config.name or "Badge"), Font = theme.fontCode,
         TextSize = 10, TextColor3 = color, BackgroundTransparency = 1,
         Size = UDim2.fromScale(1, 1), Parent = pill,
     })
@@ -1091,23 +1144,31 @@ function Section.new(tab, config)
         AutomaticSize = Enum.AutomaticSize.Y,
         BackgroundTransparency = 1, Parent = parent,
     })
-    Util.listLayout({ gap = 6 }).Parent = self._root
+    Util.listLayout({ gap = 8 }).Parent = self._root
 
-    local titleRow = Util.create("Frame", {
+    -- header row with bottom rule
+    local headerRow = Util.create("Frame", {
         Size = UDim2.new(1, 0, 0, 16),
         BackgroundTransparency = 1, Parent = self._root,
     })
     Util.create("TextLabel", {
         Text = tostring(config.title or "Section"),
-        Font = theme.fontBold, TextSize = 12, TextColor3 = theme.text,
+        Font = theme.fontBold, TextSize = 11,
+        TextColor3 = theme.muted,
         TextXAlignment = Enum.TextXAlignment.Left, BackgroundTransparency = 1,
-        Size = UDim2.new(1, 0, 1, 0), Parent = titleRow,
+        Size = UDim2.new(1, 0, 0, 14), Parent = headerRow,
+    })
+    Util.create("Frame", {
+        Size = UDim2.new(1, 0, 0, 1),
+        Position = UDim2.new(0, 0, 1, -1),
+        BackgroundColor3 = theme.border, BorderSizePixel = 0,
+        Parent = headerRow,
     })
 
     if config.description then
         Util.create("TextLabel", {
             Text = tostring(config.description),
-            Font = theme.font, TextSize = theme.fontSizeSm, TextColor3 = theme.muted,
+            Font = theme.font, TextSize = theme.fontSizeSm, TextColor3 = theme.dim,
             TextXAlignment = Enum.TextXAlignment.Left, TextWrapped = true,
             BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 0),
             AutomaticSize = Enum.AutomaticSize.Y, Parent = self._root,
@@ -1119,7 +1180,7 @@ function Section.new(tab, config)
         AutomaticSize = Enum.AutomaticSize.Y,
         BackgroundTransparency = 1, Parent = self._root,
     })
-    Util.listLayout({ gap = 4 }).Parent = self._content
+    Util.listLayout({ gap = 3 }).Parent = self._content
 
     return self
 end
@@ -1170,26 +1231,42 @@ function Tab.new(window, config)
 
     self._navBtn = Util.create("TextButton", {
         Name = tostring(config.name or "Tab"),
-        Size = UDim2.new(1, 0, 0, 30),
+        Size = UDim2.new(1, 0, 0, 26),
         BackgroundColor3 = theme.surface, BackgroundTransparency = 1,
         BorderSizePixel = 0, Text = "", AutoButtonColor = false,
         Parent = window._tabList,
     })
-    Util.corner(4).Parent = self._navBtn
+    Util.corner(2).Parent = self._navBtn
+
+    -- left accent indicator (shown when selected)
+    self._indicator = Util.create("Frame", {
+        Size = UDim2.new(0, 2, 0.6, 0),
+        Position = UDim2.new(0, 0, 0.2, 0),
+        BackgroundColor3 = theme.accent, BorderSizePixel = 0,
+        Visible = false, Parent = self._navBtn,
+    })
 
     self._icon = Util.create("TextLabel", {
         Text = icon(config.icon), Font = theme.font,
-        TextSize = 14, TextColor3 = theme.muted, BackgroundTransparency = 1,
-        Size = UDim2.fromOffset(24, 30), Position = UDim2.new(0, 8, 0, 0),
+        TextSize = 13, TextColor3 = theme.muted, BackgroundTransparency = 1,
+        Size = UDim2.fromOffset(22, 26), Position = UDim2.new(0, 8, 0, 0),
         Parent = self._navBtn,
     })
     self._name = Util.create("TextLabel", {
         Text = tostring(config.name or "Tab"), Font = theme.fontMedium,
         TextSize = theme.fontSize, TextColor3 = theme.muted,
         TextXAlignment = Enum.TextXAlignment.Left, BackgroundTransparency = 1,
-        Size = UDim2.new(1, -36, 1, 0), Position = UDim2.new(0, 32, 0, 0),
+        Size = UDim2.new(1, -34, 1, 0), Position = UDim2.new(0, 30, 0, 0),
         Parent = self._navBtn,
     })
+
+    -- hover
+    self._navBtn.MouseEnter:Connect(function()
+        if not self._selected then self._navBtn.BackgroundTransparency = 0.6 end
+    end)
+    self._navBtn.MouseLeave:Connect(function()
+        if not self._selected then self._navBtn.BackgroundTransparency = 1 end
+    end)
 
     self._content = Util.create("Frame", {
         Size = UDim2.new(1, 0, 1, 0),
@@ -1198,9 +1275,17 @@ function Tab.new(window, config)
     })
     Util.padding({ top = 10, bottom = 10, left = 10, right = 10 }).Parent = self._content
 
+    -- vertical divider between columns
+    Util.create("Frame", {
+        Size = UDim2.new(0, 1, 1, 0),
+        Position = UDim2.new(0.5, 0, 0, 0),
+        BackgroundColor3 = theme.border, BorderSizePixel = 0,
+        ZIndex = 1, Parent = self._content,
+    })
+
     local function makeColumn(posX, offsetX)
         local col = Util.create("ScrollingFrame", {
-            Size = UDim2.new(0.5, -5, 1, 0),
+            Size = UDim2.new(0.5, -6, 1, 0),
             Position = UDim2.new(posX, offsetX, 0, 0),
             BackgroundTransparency = 1, BorderSizePixel = 0,
             ScrollBarThickness = 2, ScrollBarImageColor3 = theme.border,
@@ -1208,11 +1293,11 @@ function Tab.new(window, config)
             ScrollingDirection = Enum.ScrollingDirection.Y,
             Parent = self._content,
         })
-        Util.listLayout({ gap = 10 }).Parent = col
+        Util.listLayout({ gap = 12 }).Parent = col
         return col
     end
     self._col1 = makeColumn(0, 0)
-    self._col2 = makeColumn(0.5, 5)
+    self._col2 = makeColumn(0.5, 6)
 
     table.insert(self._conns, self._navBtn.MouseButton1Click:Connect(function()
         window:selectTab(self)
@@ -1222,17 +1307,20 @@ end
 
 function Tab:_setSelected(selected)
     local theme = self._window._theme
+    self._selected = selected
     self._content.Visible = selected
     self._navBtn.BackgroundTransparency = selected and 0 or 1
     self._navBtn.BackgroundColor3       = theme.surface
+    self._indicator.Visible             = selected
     self._icon.TextColor3 = selected and theme.text or theme.muted
     self._name.TextColor3 = selected and theme.text or theme.muted
 end
 
 function Tab:_applyTheme(theme)
-    self._navBtn.BackgroundColor3     = theme.surface
-    self._col1.ScrollBarImageColor3   = theme.border
-    self._col2.ScrollBarImageColor3   = theme.border
+    self._navBtn.BackgroundColor3   = theme.surface
+    self._indicator.BackgroundColor3 = theme.accent
+    self._col1.ScrollBarImageColor3 = theme.border
+    self._col2.ScrollBarImageColor3 = theme.border
 end
 
 function Tab:section(config)
@@ -1257,7 +1345,6 @@ Window.__index = Window
 function Window.new(config)
     config = config or {}
     local self = setmetatable({}, Window)
-    -- normalize theme: allow "dark" (string) → nil, only table overrides get merged
     local themeOverride = (type(config.theme) == "table") and config.theme or nil
     self._theme   = Theme.merge(Theme.Default, themeOverride)
     self._tabs    = {}
@@ -1289,33 +1376,46 @@ function Window:_build(config)
     Util.corner(theme.cornerRadius).Parent = self._root
     Util.stroke(theme.border, 1).Parent = self._root
 
+    -- Title bar (28px)
     self._titleBar = Util.create("Frame", {
-        Name = "TitleBar", Size = UDim2.new(1, 0, 0, 28),
+        Name = "TitleBar", Size = UDim2.new(1, 0, 0, 26),
         BackgroundColor3 = theme.sidebar, BorderSizePixel = 0, Parent = self._root,
+    })
+    Util.create("Frame", {
+        Size = UDim2.new(1, 0, 0, 1), Position = UDim2.new(0, 0, 1, -1),
+        BackgroundColor3 = theme.border, BorderSizePixel = 0, Parent = self._titleBar,
     })
     Util.create("TextLabel", {
         Text = tostring(config.title or "Application"),
-        Font = theme.fontBold, TextSize = theme.fontSize, TextColor3 = theme.text,
+        Font = theme.fontBold, TextSize = 12, TextColor3 = theme.text,
         TextXAlignment = Enum.TextXAlignment.Left, BackgroundTransparency = 1,
         Size = UDim2.new(1, -40, 1, 0), Position = UDim2.new(0, 12, 0, 0),
         Parent = self._titleBar,
     })
     local closeBtn = Util.create("TextButton", {
-        Text = Icons.close, Font = theme.font, TextSize = 15,
+        Text = Icons.close, Font = theme.fontCode, TextSize = 14,
         TextColor3 = theme.muted, BackgroundTransparency = 1,
-        Size = UDim2.fromOffset(28, 28),
-        Position = UDim2.new(1, -28, 0, 0), Parent = self._titleBar,
+        Size = UDim2.fromOffset(26, 26),
+        Position = UDim2.new(1, -26, 0, 0), Parent = self._titleBar,
     })
+    closeBtn.MouseEnter:Connect(function()
+        closeBtn.TextColor3 = theme.error
+    end)
+    closeBtn.MouseLeave:Connect(function()
+        closeBtn.TextColor3 = theme.muted
+    end)
     table.insert(self._conns, closeBtn.MouseButton1Click:Connect(function()
         self:setVisible(false)
     end))
     self:_enableDrag()
 
+    -- Body
     local body = Util.create("Frame", {
-        Size = UDim2.new(1, 0, 1, -28), Position = UDim2.new(0, 0, 0, 28),
+        Size = UDim2.new(1, 0, 1, -26), Position = UDim2.new(0, 0, 0, 26),
         BackgroundTransparency = 1, Parent = self._root,
     })
 
+    -- Sidebar
     self._sidebar = Util.create("Frame", {
         Size = UDim2.new(0.19, 0, 1, 0),
         BackgroundColor3 = theme.sidebar, BorderSizePixel = 0, Parent = body,
@@ -1329,8 +1429,9 @@ function Window:_build(config)
         Parent = self._sidebar,
     })
     Util.padding({ top = 6, bottom = 6, left = 6, right = 6 }).Parent = self._tabList
-    Util.listLayout({ gap = 2 }).Parent = self._tabList
+    Util.listLayout({ gap = 1 }).Parent = self._tabList
 
+    -- Content
     self._content = Util.create("Frame", {
         Size = UDim2.new(0.81, 0, 1, 0),
         Position = UDim2.new(0.19, 0, 0, 0),
@@ -1413,7 +1514,6 @@ Axiom.build = AXIOM_BUILD
 function Axiom.new(config)
     print(("[Axiom] build %s — new() called"):format(AXIOM_BUILD))
     if type(config) ~= "table" then config = {} end
-    -- Normalize theme: string values (e.g. "dark") become nil → default theme
     if type(config.theme) ~= "table" then config.theme = nil end
     return Window.new(config)
 end
