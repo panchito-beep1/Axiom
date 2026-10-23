@@ -16,7 +16,7 @@ print([[
    YMM   ""`,m"       "Mm,MMM  "YMMMMMP" MMM  M'  "MMM
 ]])
 
--- Axiom V6 disions
+-- tab revamp + divison and no size limits
 
 
 local Axiom = {}
@@ -64,6 +64,7 @@ Axiom.DefaultTheme = {
 }
 
 local TWEEN_FAST = TweenInfo.new(0.1, Enum.EasingStyle.Quad)
+local VALID_TAB_LAYOUTS = { top = true, bottom = true, left = true, right = true }
 
 -- ── Internal Helpers ──────────────────────────────────────────────────────────
 local function applyCorner(parent, radius)
@@ -198,7 +199,7 @@ local function warnCustomColor(tab, componentName)
 end
 
 -- ════════════════════════════════════════════════════════════════════════════
---  Axiom.new({ Title, Theme, Icon, Position, Size })
+--  Axiom.new({ Title, Theme, Icon, Position, Size, Layout, TabBarWidth })
 -- ════════════════════════════════════════════════════════════════════════════
 function Axiom.new(options)
     options = options or {}
@@ -320,7 +321,7 @@ function Axiom.new(options)
     pageContainer.Size = UDim2.new(1, 0, 1, -26)
     pageContainer.Parent = body
 
-    -- Resizer (no maximum size limit — GUIs can grow as large as needed)
+    -- Resizer (no upper bound — window can grow arbitrarily large)
     local resizer = Instance.new("TextButton")
     resizer.BackgroundTransparency = 1
     resizer.Size = UDim2.new(0, 12, 0, 12)
@@ -343,7 +344,6 @@ function Axiom.new(options)
     UserInputService.InputChanged:Connect(function(input)
         if resizing and input.UserInputType == Enum.UserInputType.MouseMovement then
             local delta = input.Position - resizeStart
-            -- Only a small minimum is enforced; no upper bound.
             mainFrame.Size = UDim2.new(
                 0, math.max(200, startSize.X.Offset + delta.X),
                 0, math.max(100, startSize.Y.Offset + delta.Y)
@@ -353,23 +353,123 @@ function Axiom.new(options)
 
     makeDraggable(mainFrame, titleBar)
 
-    self._screen = screen
-    self._mainFrame = mainFrame
-    self._tabContainer = tabContainer
-    self._pageContainer = pageContainer
-    self._tabs = {}
-    self._watermark = nil
+    self._screen          = screen
+    self._mainFrame       = mainFrame
+    self._tabContainer    = tabContainer
+    self._pageContainer   = pageContainer
+    self._tabListLayout   = tabLayout
+    self._resizer         = resizer
+    self._tabs            = {}
+    self._tabLayoutMode   = options.Layout      or "top"
+    self._tabBarWidth     = options.TabBarWidth or 120
+    self._watermark       = nil
     self._notificationGui = nil
-    self._titleLbl = titleLbl
-    self._activeTabIndex = 1
-    self._searchRegistry = {}
-    self._searchQuery = ""
-    self._searchBox = nil
-    self._stateRegistry = {}
+    self._titleLbl        = titleLbl
+    self._activeTabIndex  = 1
+    self._searchRegistry  = {}
+    self._searchQuery     = ""
+    self._searchBox       = nil
+    self._stateRegistry   = {}
     self._stateAutoCounter = 0
-    self._stateFilePath = nil
+    self._stateFilePath   = nil
+
+    -- Apply non-default layout immediately
+    if self._tabLayoutMode ~= "top" then
+        self:_applyTabLayout(self._tabLayoutMode)
+    end
 
     return self
+end
+
+-- ════════════════════════════════════════════════════════════════════════════
+--  Tab bar layout: "top" (default) | "bottom" | "left" | "right"
+-- ════════════════════════════════════════════════════════════════════════════
+function Axiom:_applyTabLayout(layout)
+    layout = layout or "top"
+    if not VALID_TAB_LAYOUTS[layout] then
+        warn("[Axiom] Unknown tab Layout '" .. tostring(layout) .. "', falling back to 'top'.")
+        layout = "top"
+    end
+    self._tabLayoutMode = layout
+
+    local tabContainer  = self._tabContainer
+    local pageContainer = self._pageContainer
+    local tabLayout     = self._tabListLayout
+    local tabBarWidth   = self._tabBarWidth or 120
+
+    if layout == "top" then
+        tabContainer.Position  = UDim2.new(0, 0, 0, 0)
+        tabContainer.Size      = UDim2.new(1, 0, 0, 26)
+        pageContainer.Position = UDim2.new(0, 0, 0, 26)
+        pageContainer.Size     = UDim2.new(1, 0, 1, -26)
+        tabLayout.FillDirection     = Enum.FillDirection.Horizontal
+        tabLayout.VerticalAlignment = Enum.VerticalAlignment.Center
+        if self._resizer then self._resizer.Position = UDim2.new(1, -12, 1, -12) end
+
+    elseif layout == "bottom" then
+        tabContainer.Position  = UDim2.new(0, 0, 1, -26)
+        tabContainer.Size      = UDim2.new(1, 0, 0, 26)
+        pageContainer.Position = UDim2.new(0, 0, 0, 0)
+        pageContainer.Size     = UDim2.new(1, 0, 1, -26)
+        tabLayout.FillDirection     = Enum.FillDirection.Horizontal
+        tabLayout.VerticalAlignment = Enum.VerticalAlignment.Center
+        if self._resizer then self._resizer.Position = UDim2.new(1, -12, 1, -38) end
+
+    elseif layout == "left" then
+        tabContainer.Position  = UDim2.new(0, 0, 0, 0)
+        tabContainer.Size      = UDim2.new(0, tabBarWidth, 1, 0)
+        pageContainer.Position = UDim2.new(0, tabBarWidth, 0, 0)
+        pageContainer.Size     = UDim2.new(1, -tabBarWidth, 1, 0)
+        tabLayout.FillDirection     = Enum.FillDirection.Vertical
+        tabLayout.VerticalAlignment = Enum.VerticalAlignment.Top
+        if self._resizer then self._resizer.Position = UDim2.new(1, -12, 1, -12) end
+
+    elseif layout == "right" then
+        tabContainer.Position  = UDim2.new(1, -tabBarWidth, 0, 0)
+        tabContainer.Size      = UDim2.new(0, tabBarWidth, 1, 0)
+        pageContainer.Position = UDim2.new(0, 0, 0, 0)
+        pageContainer.Size     = UDim2.new(1, -tabBarWidth, 1, 0)
+        tabLayout.FillDirection     = Enum.FillDirection.Vertical
+        tabLayout.VerticalAlignment = Enum.VerticalAlignment.Top
+        if self._resizer then self._resizer.Position = UDim2.new(1, -(tabBarWidth + 12), 1, -12) end
+    end
+
+    for _, t in ipairs(self._tabs) do
+        self:_sizeTab(t)
+    end
+end
+
+function Axiom:_sizeTab(tab)
+    local mode = self._tabLayoutMode or "top"
+    if mode == "top" or mode == "bottom" then
+        local txtSize = TextService:GetTextSize(
+            tab.TextLabel.Text, 13, Enum.Font.RobotoMono, Vector2.new(999, 26)
+        )
+        local totalWidth = txtSize.X + 16 + (tab.Icon and 24 or 0)
+        tab.Button.Size = UDim2.new(0, totalWidth, 1, 0)
+
+        if tab.Icon then
+            tab.TextLabel.Position = UDim2.new(0, 26, 0, 0)
+            tab.TextLabel.Size     = UDim2.new(1, -26, 1, 0)
+        else
+            tab.TextLabel.Position = UDim2.new(0, 8, 0, 0)
+            tab.TextLabel.Size     = UDim2.new(1, -16, 1, 0)
+        end
+    else
+        tab.Button.Size = UDim2.new(1, 0, 0, 28)
+
+        if tab.Icon then
+            tab.TextLabel.Position = UDim2.new(0, 26, 0, 0)
+            tab.TextLabel.Size     = UDim2.new(1, -30, 1, 0)
+        else
+            tab.TextLabel.Position = UDim2.new(0, 8, 0, 0)
+            tab.TextLabel.Size     = UDim2.new(1, -16, 1, 0)
+        end
+    end
+end
+
+function Axiom:SetTabLayout(layout)
+    self:_applyTabLayout(layout)
 end
 
 -- ════════════════════════════════════════════════════════════════════════════
@@ -513,74 +613,77 @@ function Axiom:LoadState()
 end
 
 -- ════════════════════════════════════════════════════════════════════════════
---  Axiom:AddTab({ Name, Icon })
+--  Axiom:AddTab({ Name, Icon, Layout })
 -- ════════════════════════════════════════════════════════════════════════════
 function Axiom:AddTab(options)
     options = options or {}
-    local name = options.Name or "Tab"
+    local name   = options.Name or "Tab"
     local iconId = options.Icon
 
     local theme = self._theme
 
+    -- First tab decides the layout; subsequent tabs use the same layout.
+    if #self._tabs == 0 then
+        if options.Layout and options.Layout ~= self._tabLayoutMode then
+            self:_applyTabLayout(options.Layout)
+        end
+    elseif options.Layout and options.Layout ~= self._tabLayoutMode then
+        warn("[Axiom] Tab layout already set to '" .. tostring(self._tabLayoutMode) ..
+             "'; ignoring Layout='" .. tostring(options.Layout) ..
+             "' on new tab. Use win:SetTabLayout() to change it.")
+    end
+
     local tabBtn = Instance.new("TextButton")
     tabBtn.BackgroundColor3 = theme.TabNormal
-    tabBtn.Size = UDim2.new(0, 0, 1, 0)
-    tabBtn.Font = Enum.Font.RobotoMono
-    tabBtn.Text = ""
-    tabBtn.TextColor3 = theme.TabNormalText
-    tabBtn.TextSize = 13
-    tabBtn.Parent = self._tabContainer
+    tabBtn.Size             = UDim2.new(0, 0, 1, 0) -- real size set by _sizeTab
+    tabBtn.Font             = Enum.Font.RobotoMono
+    tabBtn.Text             = ""
+    tabBtn.TextColor3       = theme.TabNormalText
+    tabBtn.TextSize         = 13
+    tabBtn.LayoutOrder      = #self._tabs + 1
+    tabBtn.Parent           = self._tabContainer
     applyBorder(tabBtn, theme.Border)
 
     local tabText = Instance.new("TextLabel")
     tabText.BackgroundTransparency = 1
-    tabText.Font = Enum.Font.RobotoMono
-    tabText.Text = name
-    tabText.TextColor3 = theme.TabNormalText
-    tabText.TextSize = 13
-    tabText.Parent = tabBtn
+    tabText.Font         = Enum.Font.RobotoMono
+    tabText.Text         = name
+    tabText.TextColor3   = theme.TabNormalText
+    tabText.TextSize     = 13
+    tabText.TextTruncate = Enum.TextTruncate.AtEnd
+    tabText.Parent       = tabBtn
 
     local icon
     if iconId then
         icon = Instance.new("ImageLabel")
         icon.BackgroundTransparency = 1
-        icon.Size = UDim2.new(0, 18, 0, 18)
+        icon.Size     = UDim2.new(0, 18, 0, 18)
         icon.Position = UDim2.new(0, 4, 0.5, -9)
-        icon.Image = iconId
-        icon.Parent = tabBtn
-    end
-
-    local txtSize = TextService:GetTextSize(name, 13, Enum.Font.RobotoMono, Vector2.new(999, 26))
-    local totalWidth = txtSize.X + 16 + (icon and 24 or 0)
-    tabBtn.Size = UDim2.new(0, totalWidth, 1, 0)
-
-    if icon then
-        tabText.Position = UDim2.new(0, 26, 0, 0)
-        tabText.Size = UDim2.new(1, -26, 1, 0)
-    else
-        tabText.Position = UDim2.new(0, 8, 0, 0)
-        tabText.Size = UDim2.new(1, -16, 1, 0)
+        icon.Image    = iconId
+        icon.Parent   = tabBtn
     end
 
     local page = Instance.new("ScrollingFrame")
     page.BackgroundTransparency = 1
-    page.Size = UDim2.new(1, 0, 1, 0)
-    page.ScrollBarThickness = 4
-    page.ScrollBarImageColor3 = theme.Accent
-    page.Visible = false
-    page.Parent = self._pageContainer
+    page.Size                   = UDim2.new(1, 0, 1, 0)
+    page.ScrollBarThickness     = 4
+    page.ScrollBarImageColor3   = theme.Accent
+    page.Visible                = false
+    page.Parent                 = self._pageContainer
     applyPadding(page, 8)
 
     local layout = Instance.new("UIListLayout")
     layout.SortOrder = Enum.SortOrder.LayoutOrder
-    layout.Padding = UDim.new(0, 6)
-    layout.Parent = page
+    layout.Padding   = UDim.new(0, 6)
+    layout.Parent    = page
 
     layout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
         page.CanvasSize = UDim2.new(0, 0, 0, layout.AbsoluteContentSize.Y + 16)
     end)
 
-    table.insert(self._tabs, {Button = tabBtn, Page = page, TextLabel = tabText})
+    local tabRecord = {Button = tabBtn, Page = page, TextLabel = tabText, Icon = icon}
+    table.insert(self._tabs, tabRecord)
+    self:_sizeTab(tabRecord)
 
     tabBtn.MouseButton1Click:Connect(function()
         for i, t in ipairs(self._tabs) do
@@ -602,15 +705,16 @@ function Axiom:AddTab(options)
     end
 
     local tabObj = setmetatable({}, TabComponent)
-    tabObj._page = page
+    tabObj._page        = page
     tabObj._layoutOrder = 0
-    tabObj._window = self
+    tabObj._window      = self
     return tabObj
 end
 
 -- ── Tab helper ────────────────────────────────────────────────────────────────
--- isDivision = true means: do NOT clear the active division row (used internally
--- when Axiom itself allocates a LayoutOrder for a new division row).
+-- isDivision = true keeps the current division row open (used internally by
+-- AddDivision so the next AddDivision can share the same row). Any other
+-- component closes the row.
 function TabComponent:_nextOrder(isDivision)
     if not isDivision then
         self._currentDivisionRow = nil
@@ -757,17 +861,7 @@ end
 --
 --  Divisions are title-barred frames that group components in a 2-column
 --  layout. The first two divisions sit side-by-side; the third starts a new
---  row. Each division auto-sizes to fit its content. Two rows high → the page
---  scrolls. Great for building large dashboards inside one tab.
---
---  Use divisions like a mini-tab:
---      local d = tab:AddDivision({ Title = "Stats" })
---      d:AddLabel({ Text = "K/D: 2.5" })
---      d:AddButton({ Text = "Refresh", Callback = ... })
---
---  To break out of a row (e.g. add a button between two rows of divisions),
---  just add any other component to the parent tab — the next AddDivision will
---  start a fresh row.
+--  row. Each division auto-sizes to fit its content.
 -- ════════════════════════════════════════════════════════════════════════════
 function TabComponent:_updateRowLayout(row)
     if not row or not row.Frame then return end
@@ -799,7 +893,6 @@ function TabComponent:AddDivision(options)
     local title      = options.Title or "Division"
     local parentTab  = self
 
-    -- Reuse the current row if it still has an empty slot; otherwise start a new one.
     local currentRow = self._currentDivisionRow
     if not currentRow or currentRow.Count >= 2 then
         local rowFrame = Instance.new("Frame")
@@ -812,7 +905,6 @@ function TabComponent:AddDivision(options)
         self._currentDivisionRow = currentRow
     end
 
-    -- ── Division frame ───────────────────────────────────────────────────────
     local divisionFrame = Instance.new("Frame")
     divisionFrame.BackgroundColor3 = theme.FrameBg
     divisionFrame.Size = UDim2.new(0.5, -3, 0, 24)
@@ -854,7 +946,6 @@ function TabComponent:AddDivision(options)
     contentLayout.Padding = UDim.new(0, 4)
     contentLayout.Parent = content
 
-    -- Register in the row
     currentRow.Count = currentRow.Count + 1
     if currentRow.Count == 1 then
         currentRow.Left = divisionFrame
@@ -862,7 +953,6 @@ function TabComponent:AddDivision(options)
         currentRow.Right = divisionFrame
     end
 
-    -- Auto-size: content drives division height, division height drives row height
     local function updateSize()
         local h = contentLayout.AbsoluteContentSize.Y + 8
         content.CanvasSize = UDim2.new(0, 0, 0, h)
@@ -880,7 +970,6 @@ function TabComponent:AddDivision(options)
     contentLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(updateSize)
     task.defer(updateSize)
 
-    -- ── Component proxy: expose every TabComponent method inside the division ─
     local dummyTab = {
         _page = content,
         _window = self._window,
@@ -917,14 +1006,12 @@ function TabComponent:AddDivision(options)
         end
         divisionFrame:Destroy()
 
-        -- If the row is now empty, destroy it entirely
         if not currentRow.Left and not currentRow.Right then
             if parentTab._currentDivisionRow == currentRow then
                 parentTab._currentDivisionRow = nil
             end
             currentRow.Frame:Destroy()
         else
-            -- Promote an orphan right-hand division to the left slot
             if not currentRow.Left and currentRow.Right then
                 currentRow.Left = currentRow.Right
                 currentRow.Right = nil
@@ -3770,7 +3857,7 @@ function Axiom:CreateWatermark(options)
 end
 
 -- ════════════════════════════════════════════════════════════════════════════
---  Axiom.Validators (unchanged)
+--  Axiom.Validators
 -- ════════════════════════════════════════════════════════════════════════════
 Axiom.Validators = {}
 
@@ -3855,7 +3942,7 @@ function Axiom.Validators.Currency(attr, amount, options)
 end
 
 -- ============================================================
---  Axiom:CreateKeySystem(config)  – unchanged (already table-based)
+--  Axiom:CreateKeySystem(config)
 -- ============================================================
 function Axiom:CreateKeySystem(config)
     if self._keySystemGui then
