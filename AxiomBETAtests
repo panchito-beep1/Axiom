@@ -7,7 +7,6 @@ c$$$cc$$$c     Y$$$P    $$$$$$,     $$$$$$$$$$$"$$$
  YMM   ""`,m"       "Mm,MMM  "YMMMMMP" MMM  M'  "MMM
 ]]
 print([[
-
     :::.      .,::      .::::    ...     .        :
     ;;`;;     `;;;,  .,;; ;;; .;;;;;;;.  ;;,.    ;;;
    ,[[ '[[,     '[[,,[['  [[[,[[     \[[,[[[[, ,[[[[,
@@ -15,9 +14,6 @@ print([[
    888   888,  oP"``"Yo,  888"888,_ _,88P888 Y88" 888o
    YMM   ""`,m"       "Mm,MMM  "YMMMMMP" MMM  M'  "MMM
 ]])
-
--- fixed some issues with the new tabs 
-
 
 local Axiom = {}
 Axiom.__index = Axiom
@@ -132,6 +128,16 @@ local function disabledColor(c)
     return Color3.new(c.R * 0.4, c.G * 0.4, c.B * 0.4)
 end
 
+local function lightenColor(c, amt)
+    if typeof(c) ~= "Color3" then return c end
+    amt = amt or 0.15
+    return Color3.new(
+        math.min(c.R + amt, 1),
+        math.min(c.G + amt, 1),
+        math.min(c.B + amt, 1)
+    )
+end
+
 -- ── Tooltip infrastructure ────────────────────────────────────────────────────
 local tooltipGui, tooltipLabel, tooltipTimer
 
@@ -199,7 +205,7 @@ local function warnCustomColor(tab, componentName)
 end
 
 -- ════════════════════════════════════════════════════════════════════════════
---  Axiom.new({ Title, Theme, Icon, Position, Size, Layout, TabBarWidth })
+--  Axiom.new
 -- ════════════════════════════════════════════════════════════════════════════
 function Axiom.new(options)
     options = options or {}
@@ -298,7 +304,7 @@ function Axiom.new(options)
         collapseBtn.Text = isCollapsed and "+" or "-"
     end)
     closeBtn.MouseButton1Click:Connect(function()
-        if self._stateFilePath then self:SaveState() end
+        if self._stateFilePath then pcall(function() self:SaveState() end) end
         screen:Destroy()
     end)
 
@@ -321,7 +327,7 @@ function Axiom.new(options)
     pageContainer.Size = UDim2.new(1, 0, 1, -26)
     pageContainer.Parent = body
 
-    -- Resizer (no upper bound — window can grow arbitrarily large)
+    -- Resizer
     local resizer = Instance.new("TextButton")
     resizer.BackgroundTransparency = 1
     resizer.Size = UDim2.new(0, 12, 0, 12)
@@ -373,7 +379,6 @@ function Axiom.new(options)
     self._stateAutoCounter = 0
     self._stateFilePath   = nil
 
-    -- Apply non-default layout immediately
     if self._tabLayoutMode ~= "top" then
         self:_applyTabLayout(self._tabLayoutMode)
     end
@@ -382,7 +387,7 @@ function Axiom.new(options)
 end
 
 -- ════════════════════════════════════════════════════════════════════════════
---  Tab bar layout: "top" (default) | "bottom" | "left" | "right"
+--  Tab bar layout
 -- ════════════════════════════════════════════════════════════════════════════
 function Axiom:_applyTabLayout(layout)
     layout = layout or "top"
@@ -405,7 +410,6 @@ function Axiom:_applyTabLayout(layout)
         tabLayout.FillDirection     = Enum.FillDirection.Horizontal
         tabLayout.VerticalAlignment = Enum.VerticalAlignment.Center
         if self._resizer then self._resizer.Position = UDim2.new(1, -12, 1, -12) end
-
     elseif layout == "bottom" then
         tabContainer.Position  = UDim2.new(0, 0, 1, -26)
         tabContainer.Size      = UDim2.new(1, 0, 0, 26)
@@ -414,7 +418,6 @@ function Axiom:_applyTabLayout(layout)
         tabLayout.FillDirection     = Enum.FillDirection.Horizontal
         tabLayout.VerticalAlignment = Enum.VerticalAlignment.Center
         if self._resizer then self._resizer.Position = UDim2.new(1, -12, 1, -38) end
-
     elseif layout == "left" then
         tabContainer.Position  = UDim2.new(0, 0, 0, 0)
         tabContainer.Size      = UDim2.new(0, tabBarWidth, 1, 0)
@@ -423,7 +426,6 @@ function Axiom:_applyTabLayout(layout)
         tabLayout.FillDirection     = Enum.FillDirection.Vertical
         tabLayout.VerticalAlignment = Enum.VerticalAlignment.Top
         if self._resizer then self._resizer.Position = UDim2.new(1, -12, 1, -12) end
-
     elseif layout == "right" then
         tabContainer.Position  = UDim2.new(1, -tabBarWidth, 0, 0)
         tabContainer.Size      = UDim2.new(0, tabBarWidth, 1, 0)
@@ -447,7 +449,6 @@ function Axiom:_sizeTab(tab)
         )
         local totalWidth = txtSize.X + 16 + (tab.Icon and 24 or 0)
         tab.Button.Size = UDim2.new(0, totalWidth, 1, 0)
-
         if tab.Icon then
             tab.TextLabel.Position = UDim2.new(0, 26, 0, 0)
             tab.TextLabel.Size     = UDim2.new(1, -26, 1, 0)
@@ -457,7 +458,6 @@ function Axiom:_sizeTab(tab)
         end
     else
         tab.Button.Size = UDim2.new(1, 0, 0, 28)
-
         if tab.Icon then
             tab.TextLabel.Position = UDim2.new(0, 26, 0, 0)
             tab.TextLabel.Size     = UDim2.new(1, -30, 1, 0)
@@ -542,7 +542,7 @@ function Axiom:DisableSearch()
 end
 
 -- ════════════════════════════════════════════════════════════════════════════
---  Save / load state
+--  State saving
 -- ════════════════════════════════════════════════════════════════════════════
 function Axiom:_registerState(key, getFn, setFn)
     if not key then return end
@@ -556,15 +556,25 @@ end
 
 function Axiom:EnableStateSaving(options)
     options = options or {}
+    if not writefile or not readfile then
+        warn("[Axiom] EnableStateSaving: executor missing file I/O functions")
+        return
+    end
     local folder   = options.Folder   or "Axiom"
     local filename = options.Filename or "state.json"
-    if isfolder and not isfolder(folder) then makefolder(folder) end
+    if isfolder and makefolder and not isfolder(folder) then
+        pcall(makefolder, folder)
+    end
     self._stateFilePath = folder .. "/" .. filename
 end
 
 function Axiom:SaveState()
     if not self._stateFilePath then
         warn("[Axiom] SaveState: call win:EnableStateSaving({ Folder = ..., Filename = ... }) first")
+        return
+    end
+    if not writefile then
+        warn("[Axiom] SaveState: executor missing writefile")
         return
     end
     local snapshot = {
@@ -583,8 +593,8 @@ function Axiom:SaveState()
         local ok, value = pcall(entry.get)
         if ok then snapshot.Components[key] = value end
     end
-    local json = HttpService:JSONEncode(snapshot)
-    writefile(self._stateFilePath, json)
+    local ok, json = pcall(function() return HttpService:JSONEncode(snapshot) end)
+    if ok then pcall(writefile, self._stateFilePath, json) end
 end
 
 function Axiom:LoadState()
@@ -592,7 +602,13 @@ function Axiom:LoadState()
         warn("[Axiom] LoadState: call win:EnableStateSaving({ Folder = ..., Filename = ... }) first")
         return
     end
-    if not isfile(self._stateFilePath) then return end
+    if not readfile or not isfile then
+        warn("[Axiom] LoadState: executor missing file I/O functions")
+        return
+    end
+    local exists = false
+    pcall(function() exists = isfile(self._stateFilePath) end)
+    if not exists then return end
 
     local ok, data = pcall(function()
         return HttpService:JSONDecode(readfile(self._stateFilePath))
@@ -613,16 +629,14 @@ function Axiom:LoadState()
 end
 
 -- ════════════════════════════════════════════════════════════════════════════
---  Axiom:AddTab({ Name, Icon, Layout })
+--  Axiom:AddTab
 -- ════════════════════════════════════════════════════════════════════════════
 function Axiom:AddTab(options)
     options = options or {}
     local name   = options.Name or "Tab"
     local iconId = options.Icon
+    local theme  = self._theme
 
-    local theme = self._theme
-
-    -- First tab decides the layout; subsequent tabs use the same layout.
     if #self._tabs == 0 then
         if options.Layout and options.Layout ~= self._tabLayoutMode then
             self:_applyTabLayout(options.Layout)
@@ -635,7 +649,7 @@ function Axiom:AddTab(options)
 
     local tabBtn = Instance.new("TextButton")
     tabBtn.BackgroundColor3 = theme.TabNormal
-    tabBtn.Size             = UDim2.new(0, 0, 1, 0) -- real size set by _sizeTab
+    tabBtn.Size             = UDim2.new(0, 0, 1, 0)
     tabBtn.Font             = Enum.Font.RobotoMono
     tabBtn.Text             = ""
     tabBtn.TextColor3       = theme.TabNormalText
@@ -711,10 +725,6 @@ function Axiom:AddTab(options)
     return tabObj
 end
 
--- ── Tab helper ────────────────────────────────────────────────────────────────
--- isDivision = true keeps the current division row open (used internally by
--- AddDivision so the next AddDivision can share the same row). Any other
--- component closes the row.
 function TabComponent:_nextOrder(isDivision)
     if not isDivision then
         self._currentDivisionRow = nil
@@ -728,13 +738,12 @@ local function getTheme(tab)
 end
 
 -- ════════════════════════════════════════════════════════════════════════════
---  TabComponent:AddSubTab({ Name, Icon })
+--  AddSubTab
 -- ════════════════════════════════════════════════════════════════════════════
 function TabComponent:AddSubTab(options)
     options = options or {}
     local name = options.Name or "SubTab"
     local iconId = options.Icon
-
     local theme = getTheme(self)
 
     if not self._subTabContainer then
@@ -857,11 +866,7 @@ function TabComponent:AddSubTab(options)
 end
 
 -- ════════════════════════════════════════════════════════════════════════════
---  TabComponent:AddDivision({ Title })
---
---  Divisions are title-barred frames that group components in a 2-column
---  layout. The first two divisions sit side-by-side; the third starts a new
---  row. Each division auto-sizes to fit its content.
+--  AddDivision
 -- ════════════════════════════════════════════════════════════════════════════
 function TabComponent:_updateRowLayout(row)
     if not row or not row.Frame then return end
@@ -900,7 +905,6 @@ function TabComponent:AddDivision(options)
         rowFrame.Size = UDim2.new(1, 0, 0, 0)
         rowFrame.LayoutOrder = self:_nextOrder(true)
         rowFrame.Parent = self._page
-
         currentRow = { Count = 0, Frame = rowFrame, Left = nil, Right = nil }
         self._currentDivisionRow = currentRow
     end
@@ -957,7 +961,6 @@ function TabComponent:AddDivision(options)
         local h = contentLayout.AbsoluteContentSize.Y + 8
         content.CanvasSize = UDim2.new(0, 0, 0, h)
         content.Size = UDim2.new(1, 0, 0, h)
-
         local newH = 22 + h + 2
         divisionFrame.Size = UDim2.new(
             divisionFrame.Size.X.Scale,
@@ -1005,7 +1008,6 @@ function TabComponent:AddDivision(options)
             currentRow.Right = nil
         end
         divisionFrame:Destroy()
-
         if not currentRow.Left and not currentRow.Right then
             if parentTab._currentDivisionRow == currentRow then
                 parentTab._currentDivisionRow = nil
@@ -1025,14 +1027,12 @@ function TabComponent:AddDivision(options)
     end
 
     parentTab:_updateRowLayout(currentRow)
-
     if self._window then self._window:_registerSearch(divisionFrame, title) end
-
     return division
 end
 
 -- ════════════════════════════════════════════════════════════════════════════
---  TabComponent:AddButton({ Text, Callback, Icon, Color, Tooltip })
+--  AddButton
 -- ════════════════════════════════════════════════════════════════════════════
 function TabComponent:AddButton(options)
     options = options or {}
@@ -1048,6 +1048,9 @@ function TabComponent:AddButton(options)
         warnCustomColor(self, "Button")
         bgColor = options.Color
     end
+
+    -- FIX: hover & flash now use a visible variant of the base colour
+    local hoverColor = options.Color and lightenColor(options.Color) or theme.FrameBgHover
 
     local currentCallback = callback
     local currentEnabled = true
@@ -1086,7 +1089,7 @@ function TabComponent:AddButton(options)
     lbl.Parent = btn
 
     btn.MouseEnter:Connect(function()
-        if currentEnabled then btn.BackgroundColor3 = options.Color or theme.FrameBgHover end
+        if currentEnabled then btn.BackgroundColor3 = hoverColor end
     end)
     btn.MouseLeave:Connect(function() btn.BackgroundColor3 = bgColor end)
 
@@ -1094,7 +1097,7 @@ function TabComponent:AddButton(options)
         if not currentEnabled then return end
         TweenService:Create(btn, TWEEN_FAST, {BackgroundColor3 = theme.Accent}):Play()
         task.delay(0.1, function()
-            TweenService:Create(btn, TWEEN_FAST, {BackgroundColor3 = options.Color or theme.FrameBgHover}):Play()
+            TweenService:Create(btn, TWEEN_FAST, {BackgroundColor3 = hoverColor}):Play()
         end)
         safeCall(currentCallback)
     end)
@@ -1122,10 +1125,10 @@ function TabComponent:AddButton(options)
         currentEnabled = state
         btn.Active = state
         if state then
-            btn.BackgroundColor3 = options.Color or theme.FrameBg
+            btn.BackgroundColor3 = bgColor
             lbl.TextColor3 = theme.Text
         else
-            btn.BackgroundColor3 = disabledColor(options.Color or theme.FrameBg)
+            btn.BackgroundColor3 = disabledColor(bgColor)
             lbl.TextColor3 = disabledColor(theme.Text)
         end
     end
@@ -1136,7 +1139,7 @@ function TabComponent:AddButton(options)
 end
 
 -- ════════════════════════════════════════════════════════════════════════════
---  TabComponent:AddCheckbox({ Text, Default, Callback, Color, Tooltip, StateKey })
+--  AddCheckbox
 -- ════════════════════════════════════════════════════════════════════════════
 function TabComponent:AddCheckbox(options)
     options = options or {}
@@ -1156,6 +1159,7 @@ function TabComponent:AddCheckbox(options)
         warnCustomColor(self, "Checkbox")
         bgColor = options.Color
     end
+    local hoverColor = options.Color and lightenColor(options.Color) or theme.FrameBgHover
 
     local row = Instance.new("TextButton")
     row.BackgroundColor3 = bgColor
@@ -1167,7 +1171,7 @@ function TabComponent:AddCheckbox(options)
     applyBorder(row, theme.Border)
 
     row.MouseEnter:Connect(function()
-        if currentEnabled then row.BackgroundColor3 = options.Color or theme.FrameBgHover end
+        if currentEnabled then row.BackgroundColor3 = hoverColor end
     end)
     row.MouseLeave:Connect(function() row.BackgroundColor3 = bgColor end)
 
@@ -1223,11 +1227,11 @@ function TabComponent:AddCheckbox(options)
         currentEnabled = state
         row.Active = state
         if state then
-            row.BackgroundColor3 = options.Color or theme.FrameBg
+            row.BackgroundColor3 = bgColor
             lbl.TextColor3 = theme.Text
             check.BackgroundColor3 = checked and theme.CheckOn or theme.CheckOff
         else
-            row.BackgroundColor3 = disabledColor(options.Color or theme.FrameBg)
+            row.BackgroundColor3 = disabledColor(bgColor)
             lbl.TextColor3 = disabledColor(theme.Text)
             check.BackgroundColor3 = disabledColor(checked and theme.CheckOn or theme.CheckOff)
         end
@@ -1243,8 +1247,7 @@ function TabComponent:AddCheckbox(options)
 end
 
 -- ════════════════════════════════════════════════════════════════════════════
---  TabComponent:AddSlider({ Text, Min, Max, Default, Float, Decimals,
---                          Callback, Color, Tooltip, StateKey })
+--  AddSlider
 -- ════════════════════════════════════════════════════════════════════════════
 function TabComponent:AddSlider(options)
     options = options or {}
@@ -1379,8 +1382,7 @@ function TabComponent:AddSlider(options)
 end
 
 -- ════════════════════════════════════════════════════════════════════════════
---  TabComponent:AddDropdown({ Text, Items, Default, Callback,
---                             Color, Tooltip, StateKey })
+--  AddDropdown
 -- ════════════════════════════════════════════════════════════════════════════
 function TabComponent:AddDropdown(options)
     options = options or {}
@@ -1526,9 +1528,7 @@ function TabComponent:AddDropdown(options)
 end
 
 -- ════════════════════════════════════════════════════════════════════════════
---  TabComponent:AddSearchableDropdown({ Text, Items, Default, Callback,
---                                       Color, Tooltip, StateKey,
---                                       Placeholder })
+--  AddSearchableDropdown
 -- ════════════════════════════════════════════════════════════════════════════
 function TabComponent:AddSearchableDropdown(options)
     options = options or {}
@@ -1713,8 +1713,7 @@ function TabComponent:AddSearchableDropdown(options)
 end
 
 -- ════════════════════════════════════════════════════════════════════════════
---  TabComponent:AddMultiSelectDropdown({ Text, Items, Defaults, Callback,
---                                        Color, Tooltip, StateKey })
+--  AddMultiSelectDropdown  (FIXED: scroll no longer overlaps buttons)
 -- ════════════════════════════════════════════════════════════════════════════
 function TabComponent:AddMultiSelectDropdown(options)
     options = options or {}
@@ -1768,18 +1767,6 @@ function TabComponent:AddMultiSelectDropdown(options)
     listFrame.Parent = container
     applyBorder(listFrame, theme.Border)
 
-    local scroll = Instance.new("ScrollingFrame")
-    scroll.BackgroundTransparency = 1
-    scroll.Size = UDim2.new(1, 0, 1, 0)
-    scroll.CanvasSize = UDim2.new(0, 0, 0, 0)
-    scroll.ScrollBarThickness = 4
-    scroll.ScrollBarImageColor3 = theme.Accent
-    scroll.Parent = listFrame
-
-    local optionLayout = Instance.new("UIListLayout")
-    optionLayout.SortOrder = Enum.SortOrder.LayoutOrder
-    optionLayout.Parent = scroll
-
     local selectAllBtn = Instance.new("TextButton")
     selectAllBtn.BackgroundColor3 = theme.FrameBg
     selectAllBtn.Size = UDim2.new(1, -8, 0, 20)
@@ -1804,7 +1791,16 @@ function TabComponent:AddMultiSelectDropdown(options)
     applyCorner(deselectAllBtn, 2)
     applyBorder(deselectAllBtn, theme.Border)
 
-    local optionStartY = 48
+    -- FIX: scroll is positioned below the two "select all" buttons
+    local scroll = Instance.new("ScrollingFrame")
+    scroll.BackgroundTransparency = 1
+    scroll.Position = UDim2.new(0, 0, 0, 48)
+    scroll.Size = UDim2.new(1, 0, 0, 0)
+    scroll.CanvasSize = UDim2.new(0, 0, 0, 0)
+    scroll.ScrollBarThickness = 4
+    scroll.ScrollBarImageColor3 = theme.Accent
+    scroll.Parent = listFrame
+
     local optionHeight = 22
     local optionButtons = {}
     local function rebuildOptions()
@@ -1814,7 +1810,7 @@ function TabComponent:AddMultiSelectDropdown(options)
             local btn = Instance.new("TextButton")
             btn.BackgroundTransparency = 1
             btn.Size = UDim2.new(1, -8, 0, optionHeight)
-            btn.Position = UDim2.new(0, 4, 0, optionStartY + (i-1)*optionHeight)
+            btn.Position = UDim2.new(0, 4, 0, (i-1) * optionHeight)
             btn.Font = Enum.Font.RobotoMono
             btn.Text = " " .. tostring(optItem)
             btn.TextColor3 = theme.TabNormalText
@@ -1847,32 +1843,33 @@ function TabComponent:AddMultiSelectDropdown(options)
             optionButtons[optItem] = {btn = btn, check = checkIndicator}
         end
         scroll.CanvasSize = UDim2.new(0, 0, 0, #items * optionHeight)
-        local totalHeight = 48 + #items * optionHeight
         if isOpen then
-            local displayedHeight = math.min(totalHeight, 180)
-            scroll.Size = UDim2.new(1, 0, 0, displayedHeight)
-            TweenService:Create(container, TWEEN_FAST, {Size = UDim2.new(1, 0, 0, 26 + 2 + displayedHeight)}):Play()
-            TweenService:Create(listFrame, TWEEN_FAST, {Size = UDim2.new(1, 0, 0, 2 + displayedHeight)}):Play()
+            local totalContent = #items * optionHeight
+            local scrollHeight = math.min(totalContent, 132)
+            local listHeight   = 48 + scrollHeight + 4
+            scroll.Size = UDim2.new(1, 0, 0, scrollHeight)
+            TweenService:Create(container, TWEEN_FAST, {Size = UDim2.new(1, 0, 0, 26 + listHeight)}):Play()
+            TweenService:Create(listFrame, TWEEN_FAST, {Size = UDim2.new(1, 0, 0, listHeight)}):Play()
         end
     end
     rebuildOptions()
 
-    local function openClose()
+    header.MouseButton1Click:Connect(function()
         if not currentEnabled then return end
         isOpen = not isOpen
         if isOpen then
-            local totalHeight = 48 + #items * optionHeight
-            local displayedHeight = math.min(totalHeight, 180)
-            scroll.Size = UDim2.new(1, 0, 0, displayedHeight)
-            TweenService:Create(container, TWEEN_FAST, {Size = UDim2.new(1, 0, 0, 26 + 2 + displayedHeight)}):Play()
-            TweenService:Create(listFrame, TWEEN_FAST, {Size = UDim2.new(1, 0, 0, 2 + displayedHeight)}):Play()
+            local totalContent = #items * optionHeight
+            local scrollHeight = math.min(totalContent, 132)
+            local listHeight   = 48 + scrollHeight + 4
+            scroll.Size = UDim2.new(1, 0, 0, scrollHeight)
+            TweenService:Create(container, TWEEN_FAST, {Size = UDim2.new(1, 0, 0, 26 + listHeight)}):Play()
+            TweenService:Create(listFrame, TWEEN_FAST, {Size = UDim2.new(1, 0, 0, listHeight)}):Play()
         else
             TweenService:Create(container, TWEEN_FAST, {Size = UDim2.new(1, 0, 0, 24)}):Play()
             TweenService:Create(listFrame, TWEEN_FAST, {Size = UDim2.new(1, 0, 0, 0)}):Play()
         end
-    end
+    end)
 
-    header.MouseButton1Click:Connect(openClose)
     selectAllBtn.MouseButton1Click:Connect(function()
         if not currentEnabled then return end
         for _, optItem in ipairs(items) do
@@ -1942,9 +1939,7 @@ function TabComponent:AddMultiSelectDropdown(options)
 end
 
 -- ════════════════════════════════════════════════════════════════════════════
---  TabComponent:AddMultiSelectSearchableDropdown({ Text, Items, Defaults,
---                                                  Callback, Color, Tooltip,
---                                                  StateKey, Placeholder })
+--  AddMultiSelectSearchableDropdown
 -- ════════════════════════════════════════════════════════════════════════════
 function TabComponent:AddMultiSelectSearchableDropdown(options)
     options = options or {}
@@ -2074,7 +2069,7 @@ function TabComponent:AddMultiSelectSearchableDropdown(options)
         local visibleCount = 0
         for _, optItem in ipairs(items) do
             local btnData = optionButtons[optItem]
-            local match = (q == "" or optItem:lower():find(q, 1, true))
+            local match = (q == "" or tostring(optItem):lower():find(q, 1, true))
             btnData.btn.Visible = match
             if match then visibleCount = visibleCount + 1 end
         end
@@ -2154,8 +2149,7 @@ function TabComponent:AddMultiSelectSearchableDropdown(options)
 end
 
 -- ════════════════════════════════════════════════════════════════════════════
---  TabComponent:AddColorPicker({ Text, Default, Callback, Color,
---                                Tooltip, StateKey })
+--  AddColorPicker (FIXED: expandFrame aligned to header, correct container height)
 -- ════════════════════════════════════════════════════════════════════════════
 function TabComponent:AddColorPicker(options)
     options = options or {}
@@ -2200,9 +2194,10 @@ function TabComponent:AddColorPicker(options)
     applyCorner(preview, 2)
     applyBorder(preview, theme.Border)
 
+    -- FIX: expandFrame now starts at y=24 (aligned with header) so 24+90=114 works
     local expandFrame = Instance.new("Frame")
     expandFrame.BackgroundColor3 = theme.TabNormal
-    expandFrame.Position = UDim2.new(0, 0, 0, 26)
+    expandFrame.Position = UDim2.new(0, 0, 0, 24)
     expandFrame.Size = UDim2.new(1, 0, 0, 90)
     expandFrame.Parent = container
     applyBorder(expandFrame, theme.Border)
@@ -2309,7 +2304,7 @@ function TabComponent:AddColorPicker(options)
 end
 
 -- ════════════════════════════════════════════════════════════════════════════
---  TabComponent:AddLabel({ Text, Color, Tooltip })
+--  AddLabel
 -- ════════════════════════════════════════════════════════════════════════════
 function TabComponent:AddLabel(options)
     options = options or {}
@@ -2317,7 +2312,6 @@ function TabComponent:AddLabel(options)
 
     local text    = options.Text or ""
     local tooltip = options.Tooltip
-
     if options.Color then warnCustomColor(self, "Label") end
 
     local lbl = Instance.new("TextLabel")
@@ -2347,7 +2341,9 @@ function TabComponent:AddLabel(options)
     return obj
 end
 
--- ── TabComponent:AddSection({ Text }) ────────────────────────────────────────
+-- ════════════════════════════════════════════════════════════════════════════
+--  AddSection / AddSeparator
+-- ════════════════════════════════════════════════════════════════════════════
 function TabComponent:AddSection(options)
     options = options or {}
     local text = options.Text or ""
@@ -2365,7 +2361,6 @@ function TabComponent:AddSection(options)
     return { GetInstance = function() return lbl end, SetText = function(t) lbl.Text = "── " .. t .. " ──" end }
 end
 
--- ── TabComponent:AddSeparator() ──────────────────────────────────────────────
 function TabComponent:AddSeparator()
     local theme = getTheme(self)
     local sep = Instance.new("Frame")
@@ -2377,8 +2372,7 @@ function TabComponent:AddSeparator()
 end
 
 -- ════════════════════════════════════════════════════════════════════════════
---  TabComponent:AddTextBox({ Text, Placeholder, Default, Callback,
---                            Color, Tooltip, StateKey })
+--  AddTextBox
 -- ════════════════════════════════════════════════════════════════════════════
 function TabComponent:AddTextBox(options)
     options = options or {}
@@ -2402,7 +2396,7 @@ function TabComponent:AddTextBox(options)
 
     local lbl = Instance.new("TextLabel")
     lbl.BackgroundTransparency = 1
-    local lblWidth = text and (TextService:GetTextSize(text .. ":", 13, Enum.Font.RobotoMono, Vector2.new(999, 24)).X + 4) or 0
+    local lblWidth = (text ~= "") and (TextService:GetTextSize(text .. ":", 13, Enum.Font.RobotoMono, Vector2.new(999, 24)).X + 4) or 0
     lbl.Size = UDim2.new(0, lblWidth, 1, 0)
     lbl.Font = Enum.Font.RobotoMono
     lbl.Text = text .. ":"
@@ -2463,7 +2457,7 @@ function TabComponent:AddTextBox(options)
 end
 
 -- ════════════════════════════════════════════════════════════════════════════
---  TabComponent:AddCodeEditor({ Text, Placeholder, Default, Callback })
+--  AddCodeEditor (FIXED: initial box height)
 -- ════════════════════════════════════════════════════════════════════════════
 function TabComponent:AddCodeEditor(options)
     options = options or {}
@@ -2505,9 +2499,10 @@ function TabComponent:AddCodeEditor(options)
     applyCorner(scroll, 2)
     applyBorder(scroll, theme.Border)
 
+    -- FIX: initial box size now non-zero
     local box = Instance.new("TextBox")
     box.BackgroundTransparency = 1
-    box.Size = UDim2.new(1, -8, 0, 0)
+    box.Size = UDim2.new(1, -8, 0, 80)
     box.Position = UDim2.new(0, 4, 0, 4)
     box.Font = Enum.Font.Code
     box.PlaceholderText = placeholder or "Write code..."
@@ -2523,7 +2518,8 @@ function TabComponent:AddCodeEditor(options)
     box.Parent = scroll
 
     box:GetPropertyChangedSignal("Text"):Connect(function()
-        local textSize = TextService:GetTextSize(box.Text, box.TextSize, box.Font, Vector2.new(scroll.AbsoluteSize.X - 16, math.huge))
+        local availW = math.max(scroll.AbsoluteSize.X - 16, 50)
+        local textSize = TextService:GetTextSize(box.Text, box.TextSize, box.Font, Vector2.new(availW, math.huge))
         box.Size = UDim2.new(1, -8, 0, math.max(textSize.Y + 8, 80))
         scroll.CanvasSize = UDim2.new(0, 0, 0, math.max(textSize.Y + 16, 200))
         if currentEnabled then
@@ -2554,12 +2550,10 @@ function TabComponent:AddCodeEditor(options)
 end
 
 -- ════════════════════════════════════════════════════════════════════════════
---  TabComponent:AddGraph({ Title, MaxPoints, YMin, YMax, LineColor,
---                          SmoothAlpha, MaxLines })
+--  AddGraph
 -- ════════════════════════════════════════════════════════════════════════════
 function TabComponent:AddGraph(options)
     options = options or {}
-    local RunService = cloneref(game:GetService("RunService"))
     local theme      = getTheme(self)
 
     local title       = options.Title or "Graph"
@@ -2703,9 +2697,7 @@ function TabComponent:AddGraph(options)
 end
 
 -- ════════════════════════════════════════════════════════════════════════════
---  TabComponent:AddKeybindPicker({ Text, Default, Callback, Toggle,
---                                  AllowCombos, DefaultState,
---                                  Tooltip, StateKey })
+--  AddKeybindPicker (FIXED: SetEnabled now refreshes label colour)
 -- ════════════════════════════════════════════════════════════════════════════
 function TabComponent:AddKeybindPicker(options)
     options = options or {}
@@ -2737,7 +2729,7 @@ function TabComponent:AddKeybindPicker(options)
             for _, v in ipairs(spec) do
                 if typeof(v) == "EnumItem" then t[#t+1] = v.Name else t[#t+1] = tostring(v) end
             end
-            return t
+            return #t > 0 and t or {"Unbound"}
         end
         if type(spec) == "string" then
             local t = {}
@@ -2960,8 +2952,8 @@ function TabComponent:AddKeybindPicker(options)
         currentEnabled = state
         bindBtn.Active = state
         bindBtn.BackgroundColor3 = state and theme.Accent or disabledColor(theme.Accent)
-        keyDisplay.TextColor3 = state and theme.Text or disabledColor(theme.Text)
         label.TextColor3 = state and theme.Text or disabledColor(theme.Text)
+        updateDisplay()  -- FIX: refresh colours after toggling enabled state
     end
     function pickerObj:IsEnabled() return currentEnabled end
     function pickerObj:Destroy()
@@ -2983,9 +2975,7 @@ function TabComponent:AddKeybindPicker(options)
 end
 
 -- ════════════════════════════════════════════════════════════════════════════
---  TabComponent:AddViewport({ Title, Model, Size, FOV, StartingRotation,
---                             AutoRotate, RotationSpeed, DragEnabled,
---                             Tooltip })
+--  AddViewport
 -- ════════════════════════════════════════════════════════════════════════════
 function TabComponent:AddViewport(options)
     options = options or {}
@@ -3119,7 +3109,7 @@ function TabComponent:AddViewport(options)
     if options.Model then loadModel(options.Model) end
 
     if options.Tooltip then attachTooltip(viewportFrame, options.Tooltip, self._window) end
-    if self._window and title ~= "" then self._window:_registerSearch(container, title) end
+    if self._window and hasTitle then self._window:_registerSearch(container, title) end
 
     local obj = {}
     function obj:SetModel(newModel) loadModel(newModel) end
@@ -3144,8 +3134,7 @@ function TabComponent:AddViewport(options)
 end
 
 -- ════════════════════════════════════════════════════════════════════════════
---  TabComponent:AddTextToggle({ Text, Default, Callback, OnColor, OffColor,
---                               TextSize, Tooltip, StateKey })
+--  AddTextToggle
 -- ════════════════════════════════════════════════════════════════════════════
 function TabComponent:AddTextToggle(options)
     options = options or {}
@@ -3217,10 +3206,7 @@ function TabComponent:AddTextToggle(options)
 end
 
 -- ════════════════════════════════════════════════════════════════════════════
---  TabComponent:AddProgressBar({ Text, Default, Callback, Min, Max,
---                                Decimals, Height, FillColor,
---                                BackgroundColor, TextColor,
---                                Tooltip, StateKey })
+--  AddProgressBar (FIXED: no leading space when Text is empty)
 -- ════════════════════════════════════════════════════════════════════════════
 function TabComponent:AddProgressBar(options)
     options = options or {}
@@ -3273,7 +3259,7 @@ function TabComponent:AddProgressBar(options)
 
     local function formatText()
         local pct = (value - min) / (max - min) * 100
-        local label = text and (text .. " ") or ""
+        local label = (text ~= "") and (text .. " ") or ""
         return string.format("%s%.2f%%", label, pct)
     end
     local function refresh()
@@ -3284,7 +3270,7 @@ function TabComponent:AddProgressBar(options)
     refresh()
 
     if tooltip then attachTooltip(container, tooltip, self._window) end
-    if self._window and text then self._window:_registerSearch(container, text) end
+    if self._window and text ~= "" then self._window:_registerSearch(container, text) end
 
     local obj = {}
     function obj:GetValue() return value end
@@ -3319,16 +3305,17 @@ function TabComponent:AddProgressBar(options)
 end
 
 -- ════════════════════════════════════════════════════════════════════════════
---  TabComponent:AddImage({ Image, Size, ScaleType, BackgroundTransparency,
---                          CornerRadius, Border, Tooltip })
+--  AddImage
 -- ════════════════════════════════════════════════════════════════════════════
 function TabComponent:AddImage(options)
     options = options or {}
     local theme = getTheme(self)
 
     local imageId = options.Image
-    if type(imageId) == "number" or tonumber(imageId) then
+    if type(imageId) == "number" then
         imageId = "rbxassetid://" .. tostring(imageId)
+    elseif type(imageId) == "string" and tonumber(imageId) then
+        imageId = "rbxassetid://" .. imageId
     end
     imageId = imageId or ""
 
@@ -3352,7 +3339,7 @@ function TabComponent:AddImage(options)
 
     local obj = {}
     function obj:SetImage(id)
-        if type(id) == "number" or tonumber(id) then id = "rbxassetid://" .. tostring(id) end
+        if type(id) == "number" then id = "rbxassetid://" .. tostring(id) end
         imgLabel.Image = id
     end
     function obj:GetImage() return imgLabel.Image end
@@ -3371,9 +3358,7 @@ function TabComponent:AddImage(options)
 end
 
 -- ════════════════════════════════════════════════════════════════════════════
---  TabComponent:AddLayout({ Style, Padding, Size, Position,
---                           BackgroundColor, BackgroundTransparency,
---                           CellSize, CellPadding, Columns })
+--  AddLayout
 -- ════════════════════════════════════════════════════════════════════════════
 function TabComponent:AddLayout(options)
     options = options or {}
@@ -3406,7 +3391,6 @@ function TabComponent:AddLayout(options)
     applyBorder(container, theme.Border)
 
     local layout
-
     if style == "Vertical" then
         layout = Instance.new("UIListLayout")
         layout.FillDirection = Enum.FillDirection.Vertical
@@ -3482,7 +3466,6 @@ function TabComponent:AddLayout(options)
 
                     wrapper.LayoutOrder = dummyTab._layoutOrder
                     dummyTab._layoutOrder = dummyTab._layoutOrder + 1
-
                     return comp
                 end
 
@@ -3507,7 +3490,6 @@ function TabComponent:AddLayout(options)
                         inst.AnchorPoint = Vector2.new(0, 0)
                         inst.Position = UDim2.new(0, 0, 0, 0)
                         inst.Size = UDim2.new(1, 0, 1, 0)
-
                         return comp
                     end
                 end
@@ -3526,7 +3508,7 @@ function TabComponent:AddLayout(options)
 end
 
 -- ════════════════════════════════════════════════════════════════════════════
---  TabComponent:AddTable({ Headers, Rows, HeaderHeight, RowHeight, MaxHeight })
+--  AddTable
 -- ════════════════════════════════════════════════════════════════════════════
 function TabComponent:AddTable(options)
     options = options or {}
@@ -3579,7 +3561,7 @@ function TabComponent:AddTable(options)
     end
 
     local rowFrames = {}
-    for r, rowData in ipairs(rows) do
+    local function buildRow(r, rowData)
         local rowFrame = Instance.new("Frame")
         rowFrame.BackgroundColor3 = r % 2 == 0 and theme.FrameBg or theme.WindowBg
         rowFrame.Size = UDim2.new(1, 0, 0, rowHeight)
@@ -3610,39 +3592,13 @@ function TabComponent:AddTable(options)
         table.insert(rowFrames, rowFrame)
     end
 
+    for r, rowData in ipairs(rows) do buildRow(r, rowData) end
+
     local obj = {}
     function obj:SetData(newRows)
         for _, frame in ipairs(rowFrames) do frame:Destroy() end
         table.clear(rowFrames)
-        for r, rowData in ipairs(newRows) do
-            local rowFrame = Instance.new("Frame")
-            rowFrame.BackgroundColor3 = r % 2 == 0 and theme.FrameBg or theme.WindowBg
-            rowFrame.Size = UDim2.new(1, 0, 0, rowHeight)
-            rowFrame.Position = UDim2.new(0, 0, 0, headerHeight + (r-1) * rowHeight)
-            rowFrame.Parent = scroll
-            applyBorder(rowFrame, theme.Border)
-
-            local rowLayout = Instance.new("UIListLayout")
-            rowLayout.FillDirection = Enum.FillDirection.Horizontal
-            rowLayout.SortOrder = Enum.SortOrder.LayoutOrder
-            rowLayout.Padding = UDim.new(0, 0)
-            rowLayout.Parent = rowFrame
-
-            for c, cell in ipairs(rowData) do
-                local cellLabel = Instance.new("TextLabel")
-                cellLabel.BackgroundTransparency = 1
-                cellLabel.Size = UDim2.new(1 / #headers, 0, 1, 0)
-                cellLabel.Font = Enum.Font.RobotoMono
-                cellLabel.Text = tostring(cell)
-                cellLabel.TextColor3 = theme.SubText
-                cellLabel.TextSize = 12
-                cellLabel.TextXAlignment = Enum.TextXAlignment.Center
-                cellLabel.Parent = rowFrame
-                cellLabel.LayoutOrder = c
-                cellLabel.TextWrapped = true
-            end
-            table.insert(rowFrames, rowFrame)
-        end
+        for r, rowData in ipairs(newRows) do buildRow(r, rowData) end
         scroll.CanvasSize = UDim2.new(0, 0, 0, #newRows * rowHeight + headerHeight)
         container.Size = UDim2.new(1, 0, 0, math.min(#newRows * rowHeight + headerHeight, maxHeight))
     end
@@ -3652,14 +3608,13 @@ function TabComponent:AddTable(options)
 end
 
 -- ════════════════════════════════════════════════════════════════════════════
---  TabComponent:AddCollapsible({ Title })
+--  AddCollapsible
 -- ════════════════════════════════════════════════════════════════════════════
 function TabComponent:AddCollapsible(options)
     options = options or {}
     local theme = getTheme(self)
 
     local title = options.Title or "Section"
-
     local isOpen = true
     local currentEnabled = true
 
@@ -3764,13 +3719,11 @@ function TabComponent:AddCollapsible(options)
     function collapsible:Destroy() container:Destroy() end
 
     if self._window then self._window:_registerSearch(headerBtn, title) end
-
     return collapsible
 end
 
 -- ════════════════════════════════════════════════════════════════════════════
---  Axiom:CreateWatermark({ Text, Icon, Position, TextColor, TextSize,
---                         BackgroundColor, BackgroundTransparency, Font })
+--  Watermark
 -- ════════════════════════════════════════════════════════════════════════════
 function Axiom:CreateWatermark(options)
     options = options or {}
@@ -3785,7 +3738,7 @@ function Axiom:CreateWatermark(options)
 
     local wmFrame = Instance.new("Frame")
     wmFrame.BackgroundColor3 = options.BackgroundColor or theme.TitleBg
-    wmFrame.BackgroundTransparency = options.BackgroundTransparency or 0.4
+    wmFrame.BackgroundTransparency = options.BackgroundTransparency ~= nil and options.BackgroundTransparency or 0.4
     wmFrame.Position = options.Position or UDim2.new(0, 10, 0, 10)
     wmFrame.Size = UDim2.new(0, 0, 0, 0)
     wmFrame.Parent = wmGui
@@ -3846,7 +3799,7 @@ function Axiom:CreateWatermark(options)
         if newOptions.TextColor then wmLabel.TextColor3 = newOptions.TextColor end
         if newOptions.TextSize then wmLabel.TextSize = newOptions.TextSize end
         if newOptions.BackgroundColor then wmFrame.BackgroundColor3 = newOptions.BackgroundColor end
-        if newOptions.BackgroundTransparency then wmFrame.BackgroundTransparency = newOptions.BackgroundTransparency end
+        if newOptions.BackgroundTransparency ~= nil then wmFrame.BackgroundTransparency = newOptions.BackgroundTransparency end
         if newOptions.Position then wmFrame.Position = newOptions.Position end
         if newOptions.Font then wmLabel.Font = newOptions.Font end
         updateSize()
@@ -3857,7 +3810,7 @@ function Axiom:CreateWatermark(options)
 end
 
 -- ════════════════════════════════════════════════════════════════════════════
---  Axiom.Validators
+--  Validators
 -- ════════════════════════════════════════════════════════════════════════════
 Axiom.Validators = {}
 
@@ -3941,9 +3894,9 @@ function Axiom.Validators.Currency(attr, amount, options)
     }
 end
 
--- ============================================================
---  Axiom:CreateKeySystem(config)
--- ============================================================
+-- ════════════════════════════════════════════════════════════════════════════
+--  Key System
+-- ════════════════════════════════════════════════════════════════════════════
 function Axiom:CreateKeySystem(config)
     if self._keySystemGui then
         pcall(function() self._keySystemGui:Destroy() end)
@@ -3986,7 +3939,7 @@ function Axiom:CreateKeySystem(config)
     local savedKey = ""
     if saveKey then
         pcall(function()
-            if readfile then savedKey = readfile(saveId) or "" end
+            if readfile and isfile and isfile(saveId) then savedKey = readfile(saveId) or "" end
         end)
     end
 
@@ -3996,6 +3949,7 @@ function Axiom:CreateKeySystem(config)
     local isMasked        = false
     local realKey         = savedKey
     local isValidating    = false
+    local isServiceOpen   = false
 
     local keyScreen = Instance.new("ScreenGui")
     keyScreen.Name         = "Axiom_KeySystem"
@@ -4288,6 +4242,8 @@ function Axiom:CreateKeySystem(config)
     applyCorner(howToBtn, 2)
     applyBorder(howToBtn, theme.Border)
 
+    local howToConn
+
     local function refreshRightPanel(srvName)
         local data      = services[srvName]
         if not data then return end
@@ -4295,18 +4251,16 @@ function Axiom:CreateKeySystem(config)
         local tier      = data.Tier    or "Free"
         local isPremium = data.Premium or false
 
-        tierBadgeLabel.Text            = tier:upper()
+        tierBadgeLabel.Text            = string.upper(tier)
         tierBadge.BackgroundColor3     = TIER_COLORS[tier] or theme.Accent
         premiumBadge.Visible = isPremium
 
         local link = data.HowToLink
         howToBtn.Visible = link ~= nil
-        if howToBtn:FindFirstChild("_conn") then
-            howToBtn._conn:Disconnect()
-        end
+        -- FIX: track connection in local variable instead of broken child lookup
+        if howToConn then howToConn:Disconnect(); howToConn = nil end
         if link then
-            howToBtn._conn = howToBtn.MouseButton1Click:Connect(function()
-                pcall(game.GetService, game, "GuiService")
+            howToConn = howToBtn.MouseButton1Click:Connect(function()
                 pcall(function()
                     game:GetService("GuiService"):OpenBrowserWindow(link)
                 end)
@@ -4346,7 +4300,6 @@ function Axiom:CreateKeySystem(config)
         end)
     end
 
-    local isServiceOpen = false
     serviceBtn.MouseButton1Click:Connect(function()
         isServiceOpen = not isServiceOpen
         if isServiceOpen then
@@ -4387,7 +4340,7 @@ function Axiom:CreateKeySystem(config)
 
         local remaining = retryCD
         local function tick()
-            remaining -= 1
+            remaining = remaining - 1
             statusLbl.Text = "Retry in " .. remaining .. "s…"
             if remaining <= 0 then
                 retryCount     = 0
@@ -4446,9 +4399,8 @@ function Axiom:CreateKeySystem(config)
                 task.spawn(function()
                     onSuccess(selectedService, key, tier, isPremium)
                 end)
-
             else
-                retryCount += 1
+                retryCount = retryCount + 1
 
                 keyInput.BackgroundColor3 = Color3.fromRGB(180, 45, 45)
                 task.delay(0.35, function()
@@ -4538,11 +4490,9 @@ function Axiom:GetTier()
     return self._tier or "Free"
 end
 
--- ============================================================
---  Axiom:Notify({ Title, Description, Duration, Type, Color, Icon,
---                Position, MaxStack, BackgroundColor,
---                TitleColor, MessageColor })
--- ============================================================
+-- ════════════════════════════════════════════════════════════════════════════
+--  Notifications
+-- ════════════════════════════════════════════════════════════════════════════
 local _NOTIFY_PRESETS = {
     success = {headerColor = Color3.fromRGB(38,  175, 75),  icon = "✔"},
     error   = {headerColor = Color3.fromRGB(200, 48,  48),  icon = "✖"},
@@ -4552,7 +4502,6 @@ local _NOTIFY_PRESETS = {
 
 function Axiom:Notify(options)
     options = options or {}
-
     local theme    = self._theme
     local title    = options.Title       or "Notification"
     local message  = options.Description or ""
@@ -4732,9 +4681,9 @@ function Axiom:SetNotifyMaxStack(n)
     self._notifyMaxStack = n
 end
 
--- ============================================================
---  Axiom:ShowDialog({ Title, Message, Buttons })
--- ============================================================
+-- ════════════════════════════════════════════════════════════════════════════
+--  Dialog / Loading
+-- ════════════════════════════════════════════════════════════════════════════
 function Axiom:ShowDialog(options)
     local theme = self._theme or Axiom.DefaultTheme
     options = options or {}
@@ -4823,9 +4772,6 @@ function Axiom:ShowDialog(options)
     return dialogFrame
 end
 
--- ============================================================
---  Axiom:ShowLoadingScreen({ Title })
--- ============================================================
 function Axiom:ShowLoadingScreen(options)
     options = options or {}
     local title = options.Title
@@ -4905,9 +4851,7 @@ function Axiom:ShowLoadingScreen(options)
 end
 
 -- ════════════════════════════════════════════════════════════════════════════
---  TabComponent:AddNumberInput({ Text, Min, Max, Default, Callback,
---                                Step, Float, Decimals, Width, Color,
---                                Tooltip, StateKey })
+--  AddNumberInput
 -- ════════════════════════════════════════════════════════════════════════════
 function TabComponent:AddNumberInput(options)
     options = options or {}
@@ -5022,7 +4966,7 @@ function TabComponent:AddNumberInput(options)
 
     local function addHover(btn)
         btn.MouseEnter:Connect(function()
-            if currentEnabled then btn.BackgroundColor3 = options.Color or theme.FrameBgHover end
+            if currentEnabled then btn.BackgroundColor3 = options.Color and lightenColor(options.Color) or theme.FrameBgHover end
         end)
         btn.MouseLeave:Connect(function()
             btn.BackgroundColor3 = options.Color or theme.FrameBg
@@ -5077,7 +5021,7 @@ function TabComponent:AddNumberInput(options)
 end
 
 -- ════════════════════════════════════════════════════════════════════════════
---  SetTheme / Lucide / Config / Destroy
+--  Theme / Config / Destroy
 -- ════════════════════════════════════════════════════════════════════════════
 function Axiom:SetTheme(newTheme)
     local oldTheme = self._theme
@@ -5121,15 +5065,19 @@ end
 Axiom.Lucide = nil
 function Axiom:LoadLucide()
     if not Axiom.Lucide then
-        Axiom.Lucide = loadstring(game:HttpGet(
-            "https://raw.githubusercontent.com/xxpwnxxx420lord/Lucide.Lua/refs/heads/main/lucide.lua"
-        ))()
+        local ok, result = pcall(function()
+            return loadstring(game:HttpGet(
+                "https://raw.githubusercontent.com/xxpwnxxx420lord/Lucide.Lua/refs/heads/main/lucide.lua"
+            ))()
+        end)
+        if ok then Axiom.Lucide = result end
     end
     return Axiom.Lucide
 end
 
 function Axiom:GetLucideIcon(name, options)
     local lucide = self:LoadLucide()
+    if not lucide then return nil end
     return lucide:geticon(name, options or {})
 end
 
@@ -5142,18 +5090,20 @@ function Axiom.Config.new(folder, filename)
     local self = {}
     self._data = {}
 
-    if isfolder and not isfolder(folder) then makefolder(folder) end
+    if isfolder and makefolder and not isfolder(folder) then pcall(makefolder, folder) end
 
     local function saveToStorage(tbl)
-        local json = HttpService:JSONEncode(tbl)
-        writefile(fullPath, json)
+        if not writefile then return end
+        local ok, json = pcall(function() return HttpService:JSONEncode(tbl) end)
+        if ok then pcall(writefile, fullPath, json) end
     end
 
     local function loadFromStorage()
-        if not isfile(fullPath) then return {} end
-        local json = readfile(fullPath)
-        local success, decoded = pcall(function() return HttpService:JSONDecode(json) end)
-        if success and type(decoded) == "table" then return decoded end
+        if not (isfile and readfile and isfile(fullPath)) then return {} end
+        local ok, decoded = pcall(function()
+            return HttpService:JSONDecode(readfile(fullPath))
+        end)
+        if ok and type(decoded) == "table" then return decoded end
         return {}
     end
 
@@ -5174,141 +5124,11 @@ function Axiom.Config.new(folder, filename)
 end
 
 function Axiom:Destroy()
-    if self._watermark then self._watermark:Destroy() end
-    if self._notificationGui then self._notificationGui:Destroy() end
-    if tooltipGui then tooltipGui:Destroy(); tooltipGui = nil end
-    self._screen:Destroy()
+    if self._watermark then pcall(function() self._watermark:Destroy() end) end
+    if self._notificationGui then pcall(function() self._notificationGui:Destroy() end) end
+    if self._keySystemGui then pcall(function() self._keySystemGui:Destroy() end) end
+    if tooltipGui then pcall(function() tooltipGui:Destroy() end); tooltipGui = nil end
+    if self._screen then pcall(function() self._screen:Destroy() end) end
 end
-
--- ═══════════════════════════════════════════════════════════════════════════
---  Vanilla tab-layout support (built into the source — no external patch)
--- ═══════════════════════════════════════════════════════════════════════════
-do
-    local VALID = { top = true, bottom = true, left = true, right = true }
-
-    local function findResizer(container)
-        local body = container.Parent
-        if not body then return nil end
-        for _, c in ipairs(body:GetChildren()) do
-            if c:IsA("TextButton") and c.Text == "◢" then return c end
-        end
-        return nil
-    end
-
-    local function hasIcon(tabBtn)
-        return tabBtn:FindFirstChildWhichIsA("ImageLabel", true) ~= nil
-    end
-
-    local function applyLayout(self, layout)
-        layout = layout or "top"
-        if not VALID[layout] then
-            warn("[Axiom] invalid layout '" .. tostring(layout) .. "', using 'top'")
-            layout = "top"
-        end
-        self._tabLayoutMode = layout
-
-        local tb = self._tabContainer
-        local pc = self._pageContainer
-        if not (tb and pc) then
-            warn("[Axiom] applyLayout: self is not a window")
-            return
-        end
-
-        local tl = tb:FindFirstChildOfClass("UIListLayout")
-        if not tl then
-            tl = Instance.new("UIListLayout")
-            tl.SortOrder = Enum.SortOrder.LayoutOrder
-            tl.Parent = tb
-        end
-
-        local resizer = findResizer(tb)
-        local w = self._tabBarWidth or 120
-
-        if layout == "top" then
-            tb.Position = UDim2.new(0, 0, 0, 0);   tb.Size = UDim2.new(1, 0, 0, 26)
-            pc.Position = UDim2.new(0, 0, 0, 26);  pc.Size = UDim2.new(1, 0, 1, -26)
-            tl.FillDirection     = Enum.FillDirection.Horizontal
-            tl.VerticalAlignment = Enum.VerticalAlignment.Center
-            if resizer then resizer.Position = UDim2.new(1, -12, 1, -12) end
-        elseif layout == "bottom" then
-            tb.Position = UDim2.new(0, 0, 1, -26); tb.Size = UDim2.new(1, 0, 0, 26)
-            pc.Position = UDim2.new(0, 0, 0, 0);   pc.Size = UDim2.new(1, 0, 1, -26)
-            tl.FillDirection     = Enum.FillDirection.Horizontal
-            tl.VerticalAlignment = Enum.VerticalAlignment.Center
-            if resizer then resizer.Position = UDim2.new(1, -12, 1, -38) end
-        elseif layout == "left" then
-            tb.Position = UDim2.new(0, 0, 0, 0);   tb.Size = UDim2.new(0, w, 1, 0)
-            pc.Position = UDim2.new(0, w, 0, 0);   pc.Size = UDim2.new(1, -w, 1, 0)
-            tl.FillDirection     = Enum.FillDirection.Vertical
-            tl.VerticalAlignment = Enum.VerticalAlignment.Top
-            if resizer then resizer.Position = UDim2.new(1, -12, 1, -12) end
-        elseif layout == "right" then
-            tb.Position = UDim2.new(1, -w, 0, 0);  tb.Size = UDim2.new(0, w, 1, 0)
-            pc.Position = UDim2.new(0, 0, 0, 0);   pc.Size = UDim2.new(1, -w, 1, 0)
-            tl.FillDirection     = Enum.FillDirection.Vertical
-            tl.VerticalAlignment = Enum.VerticalAlignment.Top
-            if resizer then resizer.Position = UDim2.new(1, -(w + 12), 1, -12) end
-        end
-
-        for _, t in ipairs(self._tabs or {}) do
-            local icon = hasIcon(t.Button)
-            if layout == "left" or layout == "right" then
-                t.Button.Size = UDim2.new(1, 0, 0, 28)
-                if icon then
-                    t.TextLabel.Position = UDim2.new(0, 26, 0, 0)
-                    t.TextLabel.Size     = UDim2.new(1, -30, 1, 0)
-                else
-                    t.TextLabel.Position = UDim2.new(0, 8, 0, 0)
-                    t.TextLabel.Size     = UDim2.new(1, -16, 1, 0)
-                end
-            else
-                local ts = game:GetService("TextService"):GetTextSize(
-                    t.TextLabel.Text, 13, Enum.Font.RobotoMono, Vector2.new(999, 26))
-                t.Button.Size = UDim2.new(0, ts.X + 16 + (icon and 24 or 0), 1, 0)
-                if icon then
-                    t.TextLabel.Position = UDim2.new(0, 26, 0, 0)
-                    t.TextLabel.Size     = UDim2.new(1, -26, 1, 0)
-                else
-                    t.TextLabel.Position = UDim2.new(0, 8, 0, 0)
-                    t.TextLabel.Size     = UDim2.new(1, -16, 1, 0)
-                end
-            end
-        end
-    end
-
-    -- Attach the methods to the class (instances inherit via __index = Axiom)
-    function Axiom:SetTabLayout(layout) applyLayout(self, layout) end
-    function Axiom:_applyTabLayout(layout) applyLayout(self, layout) end
-
-    -- Wrap Axiom.new so { Layout = ..., TabBarWidth = ... } works
-    local origNew = Axiom.new
-    function Axiom.new(options)
-        options = options or {}
-        local win = origNew(options)
-        win._tabBarWidth   = options.TabBarWidth or 120
-        win._tabLayoutMode = options.Layout or "top"
-        if options.Layout and options.Layout ~= "top" then
-            applyLayout(win, options.Layout)
-        end
-        return win
-    end
-
-    -- Wrap AddTab so the first-tab Layout option works
-    local origAddTab = Axiom.AddTab
-    function Axiom:AddTab(options)
-        options = options or {}
-        if #(self._tabs or {}) == 0 and options.Layout and VALID[options.Layout]
-           and options.Layout ~= self._tabLayoutMode then
-            self._pendingLayout = options.Layout
-        end
-        local result = origAddTab(self, options)
-        if self._pendingLayout then
-            applyLayout(self, self._pendingLayout)
-            self._pendingLayout = nil
-        end
-        return result
-    end
-end
--- ═══════════════════════════════════════════════════════════════════════════
 
 return Axiom
