@@ -15,7 +15,7 @@ print([[
    YMM   ""`,m"       "Mm,MMM  "YMMMMMP" MMM  M'  "MMM
 ]])
 
---axiom v6.1 divisions.A
+--axiom v6.1 divisions.AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
 local Axiom = {}
 Axiom.__index = Axiom
 
@@ -721,6 +721,9 @@ function Axiom:AddTab(options)
 end
 
 function TabComponent:_nextOrder(isDivision)
+    if not isDivision then
+        self._divisionContainer = nil
+    end
     self._layoutOrder = self._layoutOrder + 1
     return self._layoutOrder
 end
@@ -859,49 +862,37 @@ end
 -- ════════════════════════════════════════════════════════════════════════════
 function TabComponent:AddDivision(options)
     options = options or {}
-
     local theme = getTheme(self)
     local title = options.Title or "Division"
-
     local preset = options.Preset or self._divisionPreset or "Split"
-
     local columns = math.max(1, options.Columns or ({
-        Split = 2,
-        Stack = 1,
+        Split  = 2,
+        Stack  = 1,
         Triple = 3,
-        Quad = 4,
+        Quad   = 4,
     })[preset] or 2)
-
     local explicitColumns = options.Preset ~= nil or options.Columns ~= nil
-
     if not explicitColumns and self._divisionContainerColumns then
         columns = self._divisionContainerColumns
     end
-
     local COL_GAP = options.ColumnGap or 6
-
     if not self._divisionContainer then
-
         local container = Instance.new("Frame")
         container.Name = "DivisionContainer"
         container.BackgroundTransparency = 1
         container.Size = UDim2.new(1, 0, 0, 0)
         container.LayoutOrder = self:_nextOrder(true)
         container.Parent = self._page
-
         local hLayout = Instance.new("UIListLayout")
         hLayout.FillDirection = Enum.FillDirection.Horizontal
         hLayout.SortOrder = Enum.SortOrder.LayoutOrder
         hLayout.Padding = UDim.new(0, COL_GAP)
         hLayout.Parent = container
-
         hLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
             container.Size = UDim2.new(1, 0, 0, hLayout.AbsoluteContentSize.Y)
         end)
-
         local colOffset = -((columns - 1) * COL_GAP) / columns
         local colData = {}
-
         for i = 1, columns do
             local col = Instance.new("Frame")
             col.Name = "DivisionColumn" .. i
@@ -909,12 +900,10 @@ function TabComponent:AddDivision(options)
             col.Size = UDim2.new(1 / columns, colOffset, 0, 0)
             col.LayoutOrder = i
             col.Parent = container
-
             local vLayout = Instance.new("UIListLayout")
             vLayout.SortOrder = Enum.SortOrder.LayoutOrder
             vLayout.Padding = UDim.new(0, 6)
             vLayout.Parent = col
-
             vLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
                 col.Size = UDim2.new(
                     1 / columns,
@@ -923,55 +912,49 @@ function TabComponent:AddDivision(options)
                     vLayout.AbsoluteContentSize.Y
                 )
             end)
-
             colData[i] = {
-                Frame = col,
+                Frame  = col,
                 Layout = vLayout,
+                -- FIX: logical column height tracked in Lua so that
+                -- shortest-column selection is accurate synchronously,
+                -- before Roblox computes any AbsoluteContentSize values.
+                Height = 0,
             }
         end
-
-        self._divisionContainer = container
+        self._divisionContainer        = container
         self._divisionContainerColumns = columns
-        self._divisionColumns = colData
+        self._divisionColumns          = colData
     end
-
-    local shortestCol = nil
-    local shortestHeight = math.huge
-
-    for _, column in ipairs(self._divisionColumns) do
-        local height = 0
-
-        for _, child in ipairs(column.Frame:GetChildren()) do
-            if child:IsA("Frame") and child.Name == "DivisionFrame" then
-                height += child.Size.Y.Offset + 6
-            end
-        end
-
-        if height < shortestHeight then
-            shortestCol = column
-            shortestHeight = height
+    -- FIX: read column.Height (Lua-tracked) instead of iterating Instance
+    -- children and reading Size.Y.Offset, which is always the initial value
+    -- (24) for frames whose task.defer'd updateSize has not yet run.
+    local shortestCol    = self._divisionColumns[1]
+    local shortestHeight = shortestCol.Height
+    for i = 2, #self._divisionColumns do
+        local column = self._divisionColumns[i]
+        if column.Height < shortestHeight then
+            shortestCol    = column
+            shortestHeight = column.Height
         end
     end
-
-    shortestCol = shortestCol or self._divisionColumns[1]
-
     local divisionFrame = Instance.new("Frame")
     divisionFrame.Name = "DivisionFrame"
     divisionFrame.BackgroundColor3 = theme.FrameBg
     divisionFrame.Size = UDim2.new(1, 0, 0, 24)
     divisionFrame.ClipsDescendants = true
     divisionFrame.Parent = shortestCol.Frame
-
     applyCorner(divisionFrame, 2)
     applyBorder(divisionFrame, theme.Border)
-
+    -- FIX: update the tracked height now, synchronously.  The column's
+    -- UIListLayout inserts 6 px of padding between items, so only add it
+    -- when the column already contains at least one division.
+    local colGap = (shortestCol.Height > 0) and 6 or 0
+    shortestCol.Height = shortestCol.Height + 24 + colGap  -- 24 = initial frame height
     local titleBar = Instance.new("Frame")
     titleBar.BackgroundColor3 = theme.TitleBg
     titleBar.Size = UDim2.new(1, 0, 0, 22)
     titleBar.Parent = divisionFrame
-
     applyCorner(titleBar, 2)
-
     local titleLabel = Instance.new("TextLabel")
     titleLabel.BackgroundTransparency = 1
     titleLabel.Position = UDim2.new(0, 6, 0, 0)
@@ -983,7 +966,6 @@ function TabComponent:AddDivision(options)
     titleLabel.TextXAlignment = Enum.TextXAlignment.Left
     titleLabel.RichText = true
     titleLabel.Parent = titleBar
-
     local content = Instance.new("ScrollingFrame")
     content.BackgroundTransparency = 1
     content.Position = UDim2.new(0, 0, 0, 22)
@@ -992,41 +974,38 @@ function TabComponent:AddDivision(options)
     content.ScrollBarImageColor3 = theme.Accent
     content.CanvasSize = UDim2.new(0, 0, 0, 0)
     content.Parent = divisionFrame
-
     applyPadding(content, 4)
-
     local contentLayout = Instance.new("UIListLayout")
     contentLayout.SortOrder = Enum.SortOrder.LayoutOrder
     contentLayout.Padding = UDim.new(0, 4)
     contentLayout.Parent = content
-
+    -- FIX: track the last scripted frame height so updateSize can apply a
+    -- delta to shortestCol.Height rather than recomputing from scratch.
+    -- This keeps the Lua-tracked height accurate as the frame grows over time.
+    local trackedFrameHeight = 24  -- matches divisionFrame's initial Size.Y.Offset
     local function updateSize()
-        local height = contentLayout.AbsoluteContentSize.Y + 8
-
-        content.CanvasSize = UDim2.new(0, 0, 0, height)
-        content.Size = UDim2.new(1, 0, 0, height)
-
-        divisionFrame.Size = UDim2.new(1, 0, 0, 24 + height)
+        local contentH = contentLayout.AbsoluteContentSize.Y + 8
+        local newFH    = 24 + contentH
+        local delta    = newFH - trackedFrameHeight
+        trackedFrameHeight = newFH
+        -- Keep the column's Lua-tracked height in sync.
+        shortestCol.Height = shortestCol.Height + delta
+        content.CanvasSize = UDim2.new(0, 0, 0, contentH)
+        content.Size       = UDim2.new(1, 0, 0, contentH)
+        divisionFrame.Size = UDim2.new(1, 0, 0, newFH)
     end
-
     contentLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(updateSize)
-
     task.defer(updateSize)
-
     local dummyTab = {
-        _page = content,
-        _window = self._window,
+        _page        = content,
+        _window      = self._window,
         _layoutOrder = 0,
     }
-
     setmetatable(dummyTab, TabComponent)
-
     local division = {}
-
     setmetatable(division, {
         __index = function(_, methodName)
             local method = dummyTab[methodName]
-
             if type(method) == "function" then
                 return function(_, ...)
                     local result = method(dummyTab, ...)
@@ -1034,45 +1013,22 @@ function TabComponent:AddDivision(options)
                     return result
                 end
             end
-
             return method
         end,
     })
-
-    function division:GetContainer()
-        return divisionFrame
-    end
-
-    function division:GetContent()
-        return content
-    end
-
-    function division:GetTitle()
-        return titleLabel.Text
-    end
-
-    function division:SetTitle(value)
-        titleLabel.Text = tostring(value)
-    end
-
-    function division:SetVisible(value)
-        divisionFrame.Visible = value
-    end
-
-    function division:IsVisible()
-        return divisionFrame.Visible
-    end
-
-    function division:Destroy()
-        divisionFrame:Destroy()
-    end
-
+    function division:GetContainer() return divisionFrame end
+    function division:GetContent()   return content end
+    function division:GetTitle()     return titleLabel.Text end
+    function division:SetTitle(v)    titleLabel.Text = tostring(v) end
+    function division:SetVisible(v)  divisionFrame.Visible = v end
+    function division:IsVisible()    return divisionFrame.Visible end
+    function division:Destroy()      divisionFrame:Destroy() end
     if self._window then
         self._window:_registerSearch(divisionFrame, title)
     end
-
     return division
 end
+
 
 -- ════════════════════════════════════════════════════════════════════════════
 --  AddButton
