@@ -7,7 +7,6 @@ c$$$cc$$$c     Y$$$P    $$$$$$,     $$$$$$$$$$$"$$$
  YMM   ""`,m"       "Mm,MMM  "YMMMMMP" MMM  M'  "MMM
 ]]
 print([[
-
     :::.      .,::      .::::    ...     .        :
     ;;`;;     `;;;,  .,;; ;;; .;;;;;;;.  ;;,.    ;;;
    ,[[ '[[,     '[[,,[['  [[[,[[     \[[,[[[[, ,[[[[,
@@ -16,11 +15,10 @@ print([[
    YMM   ""`,m"       "Mm,MMM  "YMMMMMP" MMM  M'  "MMM
 ]])
 
--- Axiom V6 actually good syntax now!!!
+--axiom v6.1 fixed tab based issues some other minor bug fixes and new component: division also removed size limits and added tab layouts.
 
-
-local RGui = {}
-RGui.__index = RGui
+local Axiom = {}
+Axiom.__index = Axiom
 
 local TabComponent = {}
 TabComponent.__index = TabComponent
@@ -37,7 +35,7 @@ local HttpService      = cloneref(game:GetService("HttpService"))
 local LocalPlayer      = cloneref(Players.LocalPlayer)
 
 -- ── Default Theme ─────────────────────────────────────────────────────────────
-RGui.DefaultTheme = {
+Axiom.DefaultTheme = {
     WindowBg      = Color3.fromRGB(21, 22, 23),
     TitleBg       = Color3.fromRGB(41, 74, 122),
     Border        = Color3.fromRGB(21, 22, 23),
@@ -64,6 +62,7 @@ RGui.DefaultTheme = {
 }
 
 local TWEEN_FAST = TweenInfo.new(0.1, Enum.EasingStyle.Quad)
+local VALID_TAB_LAYOUTS = { top = true, bottom = true, left = true, right = true }
 
 -- ── Internal Helpers ──────────────────────────────────────────────────────────
 local function applyCorner(parent, radius)
@@ -122,13 +121,23 @@ local function safeCall(fn, ...)
     if not fn then return end
     local ok, err = pcall(fn, ...)
     if not ok then
-        warn("[RGui] Callback error: " .. tostring(err))
+        warn("[Axiom] Callback error: " .. tostring(err))
     end
 end
 
 local function disabledColor(c)
     if typeof(c) ~= "Color3" then return c end
     return Color3.new(c.R * 0.4, c.G * 0.4, c.B * 0.4)
+end
+
+local function lightenColor(c, amt)
+    if typeof(c) ~= "Color3" then return c end
+    amt = amt or 0.15
+    return Color3.new(
+        math.min(c.R + amt, 1),
+        math.min(c.G + amt, 1),
+        math.min(c.B + amt, 1)
+    )
 end
 
 -- ── Tooltip infrastructure ────────────────────────────────────────────────────
@@ -143,7 +152,7 @@ local function ensureTooltipGui(theme)
         return
     end
     tooltipGui = Instance.new("ScreenGui")
-    tooltipGui.Name = "RGui_Tooltip"
+    tooltipGui.Name = "Axiom_Tooltip"
     tooltipGui.ResetOnSpawn = false
     tooltipGui.DisplayOrder = 999
     tooltipGui.Parent = CoreGui
@@ -174,7 +183,7 @@ local function attachTooltip(anchor, text, win)
     anchor.MouseEnter:Connect(function()
         hideTooltip()
         tooltipTimer = task.delay(0.4, function()
-            local theme = (win and win._theme) or RGui.DefaultTheme
+            local theme = (win and win._theme) or Axiom.DefaultTheme
             ensureTooltipGui(theme)
             tooltipLabel.Text = text
             local absPos  = anchor.AbsolutePosition
@@ -198,32 +207,32 @@ local function warnCustomColor(tab, componentName)
 end
 
 -- ════════════════════════════════════════════════════════════════════════════
---  RGui.new({ Title, Theme, Icon, Position, Size })
+--  Axiom.new
 -- ════════════════════════════════════════════════════════════════════════════
-function RGui.new(options)
+function Axiom.new(options)
     options = options or {}
-    local self = setmetatable({}, RGui)
+    local self = setmetatable({}, Axiom)
 
-    local title       = options.Title or "R-GUI"
+    local title       = options.Title or "Axiom"
     local customTheme = options.Theme
 
     local theme = {}
-    for k, v in pairs(RGui.DefaultTheme) do theme[k] = v end
+    for k, v in pairs(Axiom.DefaultTheme) do theme[k] = v end
     if customTheme then
         for k, v in pairs(customTheme) do theme[k] = v end
     end
     self._theme = theme
 
     local screen = Instance.new("ScreenGui")
-    screen.Name = "RGui_" .. title
+    screen.Name = "Axiom_" .. title
     screen.ResetOnSpawn = false
     screen.Parent = CoreGui
 
     local mainFrame = Instance.new("Frame")
     mainFrame.Name = "MainFrame"
     mainFrame.BackgroundTransparency = 1
-    mainFrame.Position = options.Position or UDim2.new(0.5, -200, 0.3, 0)
-    mainFrame.Size     = options.Size     or UDim2.new(0, 400, 0, 300)
+    mainFrame.Position = options.Position or UDim2.new(0.5, -250, 0.3, 0)
+    mainFrame.Size     = options.Size     or UDim2.new(0, 500, 0, 400)
     mainFrame.Parent = screen
 
     -- Titlebar
@@ -297,7 +306,7 @@ function RGui.new(options)
         collapseBtn.Text = isCollapsed and "+" or "-"
     end)
     closeBtn.MouseButton1Click:Connect(function()
-        if self._stateFilePath then self:SaveState() end
+        if self._stateFilePath then pcall(function() self:SaveState() end) end
         screen:Destroy()
     end)
 
@@ -344,42 +353,129 @@ function RGui.new(options)
         if resizing and input.UserInputType == Enum.UserInputType.MouseMovement then
             local delta = input.Position - resizeStart
             mainFrame.Size = UDim2.new(
-                0, math.clamp(startSize.X.Offset + delta.X, 250, 800),
-                0, math.clamp(startSize.Y.Offset + delta.Y, 150, 800)
+                0, math.max(200, startSize.X.Offset + delta.X),
+                0, math.max(100, startSize.Y.Offset + delta.Y)
             )
         end
     end)
 
     makeDraggable(mainFrame, titleBar)
 
-    self._screen = screen
-    self._mainFrame = mainFrame
-    self._tabContainer = tabContainer
-    self._pageContainer = pageContainer
-    self._tabs = {}
-    self._watermark = nil
+    self._screen          = screen
+    self._mainFrame       = mainFrame
+    self._tabContainer    = tabContainer
+    self._pageContainer   = pageContainer
+    self._tabListLayout   = tabLayout
+    self._resizer         = resizer
+    self._tabs            = {}
+    self._tabLayoutMode   = options.Layout      or "top"
+    self._tabBarWidth     = options.TabBarWidth or 120
+    self._watermark       = nil
     self._notificationGui = nil
-    self._titleLbl = titleLbl
-    self._activeTabIndex = 1
-    self._searchRegistry = {}
-    self._searchQuery = ""
-    self._searchBox = nil
-    self._stateRegistry = {}
+    self._titleLbl        = titleLbl
+    self._activeTabIndex  = 1
+    self._searchRegistry  = {}
+    self._searchQuery     = ""
+    self._searchBox       = nil
+    self._stateRegistry   = {}
     self._stateAutoCounter = 0
-    self._stateFilePath = nil
+    self._stateFilePath   = nil
+
+    if self._tabLayoutMode ~= "top" then
+        self:_applyTabLayout(self._tabLayoutMode)
+    end
 
     return self
 end
 
 -- ════════════════════════════════════════════════════════════════════════════
+--  Tab bar layout
+-- ════════════════════════════════════════════════════════════════════════════
+function Axiom:_applyTabLayout(layout)
+    layout = layout or "top"
+    if not VALID_TAB_LAYOUTS[layout] then
+        warn("[Axiom] Unknown tab Layout '" .. tostring(layout) .. "', falling back to 'top'.")
+        layout = "top"
+    end
+    self._tabLayoutMode = layout
+
+    local tabContainer  = self._tabContainer
+    local pageContainer = self._pageContainer
+    local tabLayout     = self._tabListLayout
+    local tabBarWidth   = self._tabBarWidth or 120
+
+    if layout == "top" then
+        tabContainer.Position  = UDim2.new(0, 0, 0, 0)
+        tabContainer.Size      = UDim2.new(1, 0, 0, 26)
+        pageContainer.Position = UDim2.new(0, 0, 0, 26)
+        pageContainer.Size     = UDim2.new(1, 0, 1, -26)
+        tabLayout.FillDirection     = Enum.FillDirection.Horizontal
+        tabLayout.VerticalAlignment = Enum.VerticalAlignment.Center
+        if self._resizer then self._resizer.Position = UDim2.new(1, -12, 1, -12) end
+    elseif layout == "bottom" then
+        tabContainer.Position  = UDim2.new(0, 0, 1, -26)
+        tabContainer.Size      = UDim2.new(1, 0, 0, 26)
+        pageContainer.Position = UDim2.new(0, 0, 0, 0)
+        pageContainer.Size     = UDim2.new(1, 0, 1, -26)
+        tabLayout.FillDirection     = Enum.FillDirection.Horizontal
+        tabLayout.VerticalAlignment = Enum.VerticalAlignment.Center
+        if self._resizer then self._resizer.Position = UDim2.new(1, -12, 1, -38) end
+    elseif layout == "left" then
+        tabContainer.Position  = UDim2.new(0, 0, 0, 0)
+        tabContainer.Size      = UDim2.new(0, tabBarWidth, 1, 0)
+        pageContainer.Position = UDim2.new(0, tabBarWidth, 0, 0)
+        pageContainer.Size     = UDim2.new(1, -tabBarWidth, 1, 0)
+        tabLayout.FillDirection     = Enum.FillDirection.Vertical
+        tabLayout.VerticalAlignment = Enum.VerticalAlignment.Top
+        if self._resizer then self._resizer.Position = UDim2.new(1, -12, 1, -12) end
+    elseif layout == "right" then
+        tabContainer.Position  = UDim2.new(1, -tabBarWidth, 0, 0)
+        tabContainer.Size      = UDim2.new(0, tabBarWidth, 1, 0)
+        pageContainer.Position = UDim2.new(0, 0, 0, 0)
+        pageContainer.Size     = UDim2.new(1, -tabBarWidth, 1, 0)
+        tabLayout.FillDirection     = Enum.FillDirection.Vertical
+        tabLayout.VerticalAlignment = Enum.VerticalAlignment.Top
+        if self._resizer then self._resizer.Position = UDim2.new(1, -(tabBarWidth + 12), 1, -12) end
+    end
+
+    for _, t in ipairs(self._tabs) do
+        self:_sizeTab(t)
+    end
+end
+
+-- ✅ FIXED: full-width label with centred text (works with or without icon)
+function Axiom:_sizeTab(tab)
+    local mode = self._tabLayoutMode or "top"
+
+    tab.TextLabel.TextXAlignment = Enum.TextXAlignment.Center
+    tab.TextLabel.TextTruncate   = Enum.TextTruncate.AtEnd
+    tab.TextLabel.Position       = UDim2.new(0, 0, 0, 0)
+    tab.TextLabel.Size           = UDim2.new(1, 0, 1, 0)
+
+    if mode == "top" or mode == "bottom" then
+        local txtSize = TextService:GetTextSize(
+            tab.TextLabel.Text, 13, Enum.Font.RobotoMono, Vector2.new(999, 26)
+        )
+        local extra = tab.Icon and 56 or 24
+        tab.Button.Size = UDim2.new(0, txtSize.X + extra, 1, 0)
+    else
+        tab.Button.Size = UDim2.new(1, 0, 0, 28)
+    end
+end
+
+function Axiom:SetTabLayout(layout)
+    self:_applyTabLayout(layout)
+end
+
+-- ════════════════════════════════════════════════════════════════════════════
 --  Global search
 -- ════════════════════════════════════════════════════════════════════════════
-function RGui:_registerSearch(frame, text)
+function Axiom:_registerSearch(frame, text)
     if not frame or not text then return end
     table.insert(self._searchRegistry, { Frame = frame, Text = tostring(text):lower() })
 end
 
-function RGui:_applySearch(query)
+function Axiom:_applySearch(query)
     self._searchQuery = (query or ""):lower()
     local q = self._searchQuery
     for _, entry in ipairs(self._searchRegistry) do
@@ -393,7 +489,7 @@ function RGui:_applySearch(query)
     end
 end
 
-function RGui:EnableSearch(options)
+function Axiom:EnableSearch(options)
     options = options or {}
     if self._searchBox then return self._searchBox end
     local theme = self._theme
@@ -432,7 +528,7 @@ function RGui:EnableSearch(options)
     return searchBox
 end
 
-function RGui:DisableSearch()
+function Axiom:DisableSearch()
     if self._searchBox then
         self._searchBox:Destroy()
         self._searchBox = nil
@@ -441,29 +537,39 @@ function RGui:DisableSearch()
 end
 
 -- ════════════════════════════════════════════════════════════════════════════
---  Save / load state
+--  State saving
 -- ════════════════════════════════════════════════════════════════════════════
-function RGui:_registerState(key, getFn, setFn)
+function Axiom:_registerState(key, getFn, setFn)
     if not key then return end
     self._stateRegistry[key] = { get = getFn, set = setFn }
 end
 
-function RGui:_autoStateKey(tabLabel, componentLabel)
+function Axiom:_autoStateKey(tabLabel, componentLabel)
     self._stateAutoCounter = self._stateAutoCounter + 1
     return string.format("%s::%s::%d", tostring(tabLabel), tostring(componentLabel), self._stateAutoCounter)
 end
 
-function RGui:EnableStateSaving(options)
+function Axiom:EnableStateSaving(options)
     options = options or {}
-    local folder   = options.Folder   or "RGui"
+    if not writefile or not readfile then
+        warn("[Axiom] EnableStateSaving: executor missing file I/O functions")
+        return
+    end
+    local folder   = options.Folder   or "Axiom"
     local filename = options.Filename or "state.json"
-    if isfolder and not isfolder(folder) then makefolder(folder) end
+    if isfolder and makefolder and not isfolder(folder) then
+        pcall(makefolder, folder)
+    end
     self._stateFilePath = folder .. "/" .. filename
 end
 
-function RGui:SaveState()
+function Axiom:SaveState()
     if not self._stateFilePath then
-        warn("[RGui] SaveState: call win:EnableStateSaving({ Folder = ..., Filename = ... }) first")
+        warn("[Axiom] SaveState: call win:EnableStateSaving({ Folder = ..., Filename = ... }) first")
+        return
+    end
+    if not writefile then
+        warn("[Axiom] SaveState: executor missing writefile")
         return
     end
     local snapshot = {
@@ -482,16 +588,22 @@ function RGui:SaveState()
         local ok, value = pcall(entry.get)
         if ok then snapshot.Components[key] = value end
     end
-    local json = HttpService:JSONEncode(snapshot)
-    writefile(self._stateFilePath, json)
+    local ok, json = pcall(function() return HttpService:JSONEncode(snapshot) end)
+    if ok then pcall(writefile, self._stateFilePath, json) end
 end
 
-function RGui:LoadState()
+function Axiom:LoadState()
     if not self._stateFilePath then
-        warn("[RGui] LoadState: call win:EnableStateSaving({ Folder = ..., Filename = ... }) first")
+        warn("[Axiom] LoadState: call win:EnableStateSaving({ Folder = ..., Filename = ... }) first")
         return
     end
-    if not isfile(self._stateFilePath) then return end
+    if not readfile or not isfile then
+        warn("[Axiom] LoadState: executor missing file I/O functions")
+        return
+    end
+    local exists = false
+    pcall(function() exists = isfile(self._stateFilePath) end)
+    if not exists then return end
 
     local ok, data = pcall(function()
         return HttpService:JSONDecode(readfile(self._stateFilePath))
@@ -512,74 +624,76 @@ function RGui:LoadState()
 end
 
 -- ════════════════════════════════════════════════════════════════════════════
---  RGui:AddTab({ Name, Icon })
+--  Axiom:AddTab
 -- ════════════════════════════════════════════════════════════════════════════
-function RGui:AddTab(options)
+function Axiom:AddTab(options)
     options = options or {}
-    local name = options.Name or "Tab"
+    local name   = options.Name or "Tab"
     local iconId = options.Icon
+    local theme  = self._theme
 
-    local theme = self._theme
+    if #self._tabs == 0 then
+        if options.Layout and options.Layout ~= self._tabLayoutMode then
+            self:_applyTabLayout(options.Layout)
+        end
+    elseif options.Layout and options.Layout ~= self._tabLayoutMode then
+        warn("[Axiom] Tab layout already set to '" .. tostring(self._tabLayoutMode) ..
+             "'; ignoring Layout='" .. tostring(options.Layout) ..
+             "' on new tab. Use win:SetTabLayout() to change it.")
+    end
 
     local tabBtn = Instance.new("TextButton")
     tabBtn.BackgroundColor3 = theme.TabNormal
-    tabBtn.Size = UDim2.new(0, 0, 1, 0)
-    tabBtn.Font = Enum.Font.RobotoMono
-    tabBtn.Text = ""
-    tabBtn.TextColor3 = theme.TabNormalText
-    tabBtn.TextSize = 13
-    tabBtn.Parent = self._tabContainer
+    tabBtn.Size             = UDim2.new(0, 0, 1, 0)
+    tabBtn.Font             = Enum.Font.RobotoMono
+    tabBtn.Text             = ""
+    tabBtn.TextColor3       = theme.TabNormalText
+    tabBtn.TextSize         = 13
+    tabBtn.LayoutOrder      = #self._tabs + 1
+    tabBtn.Parent           = self._tabContainer
     applyBorder(tabBtn, theme.Border)
 
     local tabText = Instance.new("TextLabel")
     tabText.BackgroundTransparency = 1
-    tabText.Font = Enum.Font.RobotoMono
-    tabText.Text = name
-    tabText.TextColor3 = theme.TabNormalText
-    tabText.TextSize = 13
-    tabText.Parent = tabBtn
+    tabText.Font         = Enum.Font.RobotoMono
+    tabText.Text         = name
+    tabText.TextColor3   = theme.TabNormalText
+    tabText.TextSize     = 13
+    tabText.TextTruncate = Enum.TextTruncate.AtEnd
+    tabText.TextXAlignment = Enum.TextXAlignment.Center
+    tabText.Parent       = tabBtn
 
     local icon
     if iconId then
         icon = Instance.new("ImageLabel")
         icon.BackgroundTransparency = 1
-        icon.Size = UDim2.new(0, 18, 0, 18)
+        icon.Size     = UDim2.new(0, 18, 0, 18)
         icon.Position = UDim2.new(0, 4, 0.5, -9)
-        icon.Image = iconId
-        icon.Parent = tabBtn
-    end
-
-    local txtSize = TextService:GetTextSize(name, 13, Enum.Font.RobotoMono, Vector2.new(999, 26))
-    local totalWidth = txtSize.X + 16 + (icon and 24 or 0)
-    tabBtn.Size = UDim2.new(0, totalWidth, 1, 0)
-
-    if icon then
-        tabText.Position = UDim2.new(0, 26, 0, 0)
-        tabText.Size = UDim2.new(1, -26, 1, 0)
-    else
-        tabText.Position = UDim2.new(0, 8, 0, 0)
-        tabText.Size = UDim2.new(1, -16, 1, 0)
+        icon.Image    = iconId
+        icon.Parent   = tabBtn
     end
 
     local page = Instance.new("ScrollingFrame")
     page.BackgroundTransparency = 1
-    page.Size = UDim2.new(1, 0, 1, 0)
-    page.ScrollBarThickness = 4
-    page.ScrollBarImageColor3 = theme.Accent
-    page.Visible = false
-    page.Parent = self._pageContainer
+    page.Size                   = UDim2.new(1, 0, 1, 0)
+    page.ScrollBarThickness     = 4
+    page.ScrollBarImageColor3   = theme.Accent
+    page.Visible                = false
+    page.Parent                 = self._pageContainer
     applyPadding(page, 8)
 
     local layout = Instance.new("UIListLayout")
     layout.SortOrder = Enum.SortOrder.LayoutOrder
-    layout.Padding = UDim.new(0, 6)
-    layout.Parent = page
+    layout.Padding   = UDim.new(0, 6)
+    layout.Parent    = page
 
     layout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
         page.CanvasSize = UDim2.new(0, 0, 0, layout.AbsoluteContentSize.Y + 16)
     end)
 
-    table.insert(self._tabs, {Button = tabBtn, Page = page, TextLabel = tabText})
+    local tabRecord = {Button = tabBtn, Page = page, TextLabel = tabText, Icon = icon}
+    table.insert(self._tabs, tabRecord)
+    self:_sizeTab(tabRecord)
 
     tabBtn.MouseButton1Click:Connect(function()
         for i, t in ipairs(self._tabs) do
@@ -601,14 +715,16 @@ function RGui:AddTab(options)
     end
 
     local tabObj = setmetatable({}, TabComponent)
-    tabObj._page = page
+    tabObj._page        = page
     tabObj._layoutOrder = 0
-    tabObj._window = self
+    tabObj._window      = self
     return tabObj
 end
 
--- ── Tab helper ────────────────────────────────────────────────────────────────
-function TabComponent:_nextOrder()
+function TabComponent:_nextOrder(isDivision)
+    if not isDivision then
+        self._currentDivisionRow = nil
+    end
     self._layoutOrder = self._layoutOrder + 1
     return self._layoutOrder
 end
@@ -618,13 +734,12 @@ local function getTheme(tab)
 end
 
 -- ════════════════════════════════════════════════════════════════════════════
---  TabComponent:AddSubTab({ Name, Icon })
+--  AddSubTab  ✅ FIXED
 -- ════════════════════════════════════════════════════════════════════════════
 function TabComponent:AddSubTab(options)
     options = options or {}
     local name = options.Name or "SubTab"
     local iconId = options.Icon
-
     local theme = getTheme(self)
 
     if not self._subTabContainer then
@@ -670,6 +785,11 @@ function TabComponent:AddSubTab(options)
     subText.Text = name
     subText.TextColor3 = theme.TabNormalText
     subText.TextSize = 12
+    -- ✅ FIXED: full-width centred label
+    subText.TextXAlignment = Enum.TextXAlignment.Center
+    subText.TextTruncate   = Enum.TextTruncate.AtEnd
+    subText.Position       = UDim2.new(0, 0, 0, 0)
+    subText.Size           = UDim2.new(1, 0, 1, 0)
     subText.Parent = subBtn
 
     local subIcon
@@ -683,16 +803,8 @@ function TabComponent:AddSubTab(options)
     end
 
     local txtSize = TextService:GetTextSize(name, 12, Enum.Font.RobotoMono, Vector2.new(999, 24))
-    local totalWidth = txtSize.X + 16 + (subIcon and 22 or 0)
-    subBtn.Size = UDim2.new(0, totalWidth, 1, 0)
-
-    if subIcon then
-        subText.Position = UDim2.new(0, 24, 0, 0)
-        subText.Size = UDim2.new(1, -24, 1, 0)
-    else
-        subText.Position = UDim2.new(0, 8, 0, 0)
-        subText.Size = UDim2.new(1, -16, 1, 0)
-    end
+    local extra = subIcon and 56 or 24
+    subBtn.Size = UDim2.new(0, txtSize.X + extra, 1, 0)
 
     local page = Instance.new("Frame")
     page.BackgroundTransparency = 1
@@ -747,7 +859,173 @@ function TabComponent:AddSubTab(options)
 end
 
 -- ════════════════════════════════════════════════════════════════════════════
---  TabComponent:AddButton({ Text, Callback, Icon, Color, Tooltip })
+--  AddDivision
+-- ════════════════════════════════════════════════════════════════════════════
+function TabComponent:_updateRowLayout(row)
+    if not row or not row.Frame then return end
+    local left, right = row.Left, row.Right
+    if not left then
+        row.Frame.Size = UDim2.new(1, 0, 0, 0)
+        return
+    end
+
+    local leftH  = left.Size.Y.Offset
+    local rightH = right and right.Size.Y.Offset or 0
+
+    if right then
+        left.Position = UDim2.new(0, 0, 0, 0)
+        left.Size = UDim2.new(0.5, -3, 0, leftH)
+        right.Position = UDim2.new(0.5, 3, 0, 0)
+        right.Size = UDim2.new(0.5, -3, 0, rightH)
+    else
+        left.Position = UDim2.new(0, 0, 0, 0)
+        left.Size = UDim2.new(1, 0, 0, leftH)
+    end
+
+    row.Frame.Size = UDim2.new(1, 0, 0, math.max(leftH, rightH))
+end
+
+function TabComponent:AddDivision(options)
+    options = options or {}
+    local theme      = getTheme(self)
+    local title      = options.Title or "Division"
+    local parentTab  = self
+
+    local currentRow = self._currentDivisionRow
+    if not currentRow or currentRow.Count >= 2 then
+        local rowFrame = Instance.new("Frame")
+        rowFrame.BackgroundTransparency = 1
+        rowFrame.Size = UDim2.new(1, 0, 0, 0)
+        rowFrame.LayoutOrder = self:_nextOrder(true)
+        rowFrame.Parent = self._page
+        currentRow = { Count = 0, Frame = rowFrame, Left = nil, Right = nil }
+        self._currentDivisionRow = currentRow
+    end
+
+    local divisionFrame = Instance.new("Frame")
+    divisionFrame.BackgroundColor3 = theme.FrameBg
+    divisionFrame.Size = UDim2.new(0.5, -3, 0, 24)
+    divisionFrame.ClipsDescendants = true
+    divisionFrame.Parent = currentRow.Frame
+    applyCorner(divisionFrame, 2)
+    applyBorder(divisionFrame, theme.Border)
+
+    local titleBar = Instance.new("Frame")
+    titleBar.BackgroundColor3 = theme.TitleBg
+    titleBar.Size = UDim2.new(1, 0, 0, 22)
+    titleBar.Parent = divisionFrame
+    applyCorner(titleBar, 2)
+
+    local titleLabel = Instance.new("TextLabel")
+    titleLabel.BackgroundTransparency = 1
+    titleLabel.Position = UDim2.new(0, 6, 0, 0)
+    titleLabel.Size = UDim2.new(1, -12, 1, 0)
+    titleLabel.Font = Enum.Font.RobotoMono
+    titleLabel.Text = title
+    titleLabel.TextColor3 = theme.Text
+    titleLabel.TextSize = 12
+    titleLabel.TextXAlignment = Enum.TextXAlignment.Left
+    titleLabel.RichText = true
+    titleLabel.Parent = titleBar
+
+    local content = Instance.new("ScrollingFrame")
+    content.BackgroundTransparency = 1
+    content.Position = UDim2.new(0, 0, 0, 22)
+    content.Size = UDim2.new(1, 0, 0, 0)
+    content.ScrollBarThickness = 4
+    content.ScrollBarImageColor3 = theme.Accent
+    content.CanvasSize = UDim2.new(0, 0, 0, 0)
+    content.Parent = divisionFrame
+    applyPadding(content, 4)
+
+    local contentLayout = Instance.new("UIListLayout")
+    contentLayout.SortOrder = Enum.SortOrder.LayoutOrder
+    contentLayout.Padding = UDim.new(0, 4)
+    contentLayout.Parent = content
+
+    currentRow.Count = currentRow.Count + 1
+    if currentRow.Count == 1 then
+        currentRow.Left = divisionFrame
+    else
+        currentRow.Right = divisionFrame
+    end
+
+    local function updateSize()
+        local h = contentLayout.AbsoluteContentSize.Y + 8
+        content.CanvasSize = UDim2.new(0, 0, 0, h)
+        content.Size = UDim2.new(1, 0, 0, h)
+        local newH = 22 + h + 2
+        divisionFrame.Size = UDim2.new(
+            divisionFrame.Size.X.Scale,
+            divisionFrame.Size.X.Offset,
+            0, newH
+        )
+        parentTab:_updateRowLayout(currentRow)
+    end
+
+    contentLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(updateSize)
+    task.defer(updateSize)
+
+    local dummyTab = {
+        _page = content,
+        _window = self._window,
+        _layoutOrder = 0,
+    }
+    setmetatable(dummyTab, TabComponent)
+
+    local division = {}
+    setmetatable(division, {
+        __index = function(_, methodName)
+            local method = dummyTab[methodName]
+            if type(method) == "function" then
+                return function(_, ...)
+                    local result = method(dummyTab, ...)
+                    updateSize()
+                    return result
+                end
+            end
+            return method
+        end
+    })
+
+    function division:GetContainer() return divisionFrame end
+    function division:GetContent() return content end
+    function division:GetTitle() return titleLabel.Text end
+    function division:SetTitle(t) titleLabel.Text = tostring(t) end
+    function division:SetVisible(v) divisionFrame.Visible = v end
+    function division:IsVisible() return divisionFrame.Visible end
+    function division:Destroy()
+        if currentRow.Left == divisionFrame then
+            currentRow.Left = nil
+        elseif currentRow.Right == divisionFrame then
+            currentRow.Right = nil
+        end
+        divisionFrame:Destroy()
+        if not currentRow.Left and not currentRow.Right then
+            if parentTab._currentDivisionRow == currentRow then
+                parentTab._currentDivisionRow = nil
+            end
+            currentRow.Frame:Destroy()
+        else
+            if not currentRow.Left and currentRow.Right then
+                currentRow.Left = currentRow.Right
+                currentRow.Right = nil
+                currentRow.Count = 1
+                if parentTab._currentDivisionRow == currentRow then
+                    parentTab._currentDivisionRow = nil
+                end
+            end
+            parentTab:_updateRowLayout(currentRow)
+        end
+    end
+
+    parentTab:_updateRowLayout(currentRow)
+    if self._window then self._window:_registerSearch(divisionFrame, title) end
+    return division
+end
+
+-- ════════════════════════════════════════════════════════════════════════════
+--  AddButton
 -- ════════════════════════════════════════════════════════════════════════════
 function TabComponent:AddButton(options)
     options = options or {}
@@ -763,6 +1041,7 @@ function TabComponent:AddButton(options)
         warnCustomColor(self, "Button")
         bgColor = options.Color
     end
+    local hoverColor = options.Color and lightenColor(options.Color) or theme.FrameBgHover
 
     local currentCallback = callback
     local currentEnabled = true
@@ -801,7 +1080,7 @@ function TabComponent:AddButton(options)
     lbl.Parent = btn
 
     btn.MouseEnter:Connect(function()
-        if currentEnabled then btn.BackgroundColor3 = options.Color or theme.FrameBgHover end
+        if currentEnabled then btn.BackgroundColor3 = hoverColor end
     end)
     btn.MouseLeave:Connect(function() btn.BackgroundColor3 = bgColor end)
 
@@ -809,7 +1088,7 @@ function TabComponent:AddButton(options)
         if not currentEnabled then return end
         TweenService:Create(btn, TWEEN_FAST, {BackgroundColor3 = theme.Accent}):Play()
         task.delay(0.1, function()
-            TweenService:Create(btn, TWEEN_FAST, {BackgroundColor3 = options.Color or theme.FrameBgHover}):Play()
+            TweenService:Create(btn, TWEEN_FAST, {BackgroundColor3 = hoverColor}):Play()
         end)
         safeCall(currentCallback)
     end)
@@ -837,10 +1116,10 @@ function TabComponent:AddButton(options)
         currentEnabled = state
         btn.Active = state
         if state then
-            btn.BackgroundColor3 = options.Color or theme.FrameBg
+            btn.BackgroundColor3 = bgColor
             lbl.TextColor3 = theme.Text
         else
-            btn.BackgroundColor3 = disabledColor(options.Color or theme.FrameBg)
+            btn.BackgroundColor3 = disabledColor(bgColor)
             lbl.TextColor3 = disabledColor(theme.Text)
         end
     end
@@ -851,7 +1130,7 @@ function TabComponent:AddButton(options)
 end
 
 -- ════════════════════════════════════════════════════════════════════════════
---  TabComponent:AddCheckbox({ Text, Default, Callback, Color, Tooltip, StateKey })
+--  AddCheckbox
 -- ════════════════════════════════════════════════════════════════════════════
 function TabComponent:AddCheckbox(options)
     options = options or {}
@@ -871,6 +1150,7 @@ function TabComponent:AddCheckbox(options)
         warnCustomColor(self, "Checkbox")
         bgColor = options.Color
     end
+    local hoverColor = options.Color and lightenColor(options.Color) or theme.FrameBgHover
 
     local row = Instance.new("TextButton")
     row.BackgroundColor3 = bgColor
@@ -882,7 +1162,7 @@ function TabComponent:AddCheckbox(options)
     applyBorder(row, theme.Border)
 
     row.MouseEnter:Connect(function()
-        if currentEnabled then row.BackgroundColor3 = options.Color or theme.FrameBgHover end
+        if currentEnabled then row.BackgroundColor3 = hoverColor end
     end)
     row.MouseLeave:Connect(function() row.BackgroundColor3 = bgColor end)
 
@@ -938,11 +1218,11 @@ function TabComponent:AddCheckbox(options)
         currentEnabled = state
         row.Active = state
         if state then
-            row.BackgroundColor3 = options.Color or theme.FrameBg
+            row.BackgroundColor3 = bgColor
             lbl.TextColor3 = theme.Text
             check.BackgroundColor3 = checked and theme.CheckOn or theme.CheckOff
         else
-            row.BackgroundColor3 = disabledColor(options.Color or theme.FrameBg)
+            row.BackgroundColor3 = disabledColor(bgColor)
             lbl.TextColor3 = disabledColor(theme.Text)
             check.BackgroundColor3 = disabledColor(checked and theme.CheckOn or theme.CheckOff)
         end
@@ -958,8 +1238,7 @@ function TabComponent:AddCheckbox(options)
 end
 
 -- ════════════════════════════════════════════════════════════════════════════
---  TabComponent:AddSlider({ Text, Min, Max, Default, Float, Decimals,
---                          Callback, Color, Tooltip, StateKey })
+--  AddSlider
 -- ════════════════════════════════════════════════════════════════════════════
 function TabComponent:AddSlider(options)
     options = options or {}
@@ -1094,8 +1373,7 @@ function TabComponent:AddSlider(options)
 end
 
 -- ════════════════════════════════════════════════════════════════════════════
---  TabComponent:AddDropdown({ Text, Items, Default, Callback,
---                             Color, Tooltip, StateKey })
+--  AddDropdown
 -- ════════════════════════════════════════════════════════════════════════════
 function TabComponent:AddDropdown(options)
     options = options or {}
@@ -1241,9 +1519,7 @@ function TabComponent:AddDropdown(options)
 end
 
 -- ════════════════════════════════════════════════════════════════════════════
---  TabComponent:AddSearchableDropdown({ Text, Items, Default, Callback,
---                                       Color, Tooltip, StateKey,
---                                       Placeholder })
+--  AddSearchableDropdown
 -- ════════════════════════════════════════════════════════════════════════════
 function TabComponent:AddSearchableDropdown(options)
     options = options or {}
@@ -1428,8 +1704,7 @@ function TabComponent:AddSearchableDropdown(options)
 end
 
 -- ════════════════════════════════════════════════════════════════════════════
---  TabComponent:AddMultiSelectDropdown({ Text, Items, Defaults, Callback,
---                                        Color, Tooltip, StateKey })
+--  AddMultiSelectDropdown
 -- ════════════════════════════════════════════════════════════════════════════
 function TabComponent:AddMultiSelectDropdown(options)
     options = options or {}
@@ -1483,18 +1758,6 @@ function TabComponent:AddMultiSelectDropdown(options)
     listFrame.Parent = container
     applyBorder(listFrame, theme.Border)
 
-    local scroll = Instance.new("ScrollingFrame")
-    scroll.BackgroundTransparency = 1
-    scroll.Size = UDim2.new(1, 0, 1, 0)
-    scroll.CanvasSize = UDim2.new(0, 0, 0, 0)
-    scroll.ScrollBarThickness = 4
-    scroll.ScrollBarImageColor3 = theme.Accent
-    scroll.Parent = listFrame
-
-    local optionLayout = Instance.new("UIListLayout")
-    optionLayout.SortOrder = Enum.SortOrder.LayoutOrder
-    optionLayout.Parent = scroll
-
     local selectAllBtn = Instance.new("TextButton")
     selectAllBtn.BackgroundColor3 = theme.FrameBg
     selectAllBtn.Size = UDim2.new(1, -8, 0, 20)
@@ -1519,7 +1782,15 @@ function TabComponent:AddMultiSelectDropdown(options)
     applyCorner(deselectAllBtn, 2)
     applyBorder(deselectAllBtn, theme.Border)
 
-    local optionStartY = 48
+    local scroll = Instance.new("ScrollingFrame")
+    scroll.BackgroundTransparency = 1
+    scroll.Position = UDim2.new(0, 0, 0, 48)
+    scroll.Size = UDim2.new(1, 0, 0, 0)
+    scroll.CanvasSize = UDim2.new(0, 0, 0, 0)
+    scroll.ScrollBarThickness = 4
+    scroll.ScrollBarImageColor3 = theme.Accent
+    scroll.Parent = listFrame
+
     local optionHeight = 22
     local optionButtons = {}
     local function rebuildOptions()
@@ -1529,7 +1800,7 @@ function TabComponent:AddMultiSelectDropdown(options)
             local btn = Instance.new("TextButton")
             btn.BackgroundTransparency = 1
             btn.Size = UDim2.new(1, -8, 0, optionHeight)
-            btn.Position = UDim2.new(0, 4, 0, optionStartY + (i-1)*optionHeight)
+            btn.Position = UDim2.new(0, 4, 0, (i-1) * optionHeight)
             btn.Font = Enum.Font.RobotoMono
             btn.Text = " " .. tostring(optItem)
             btn.TextColor3 = theme.TabNormalText
@@ -1562,32 +1833,33 @@ function TabComponent:AddMultiSelectDropdown(options)
             optionButtons[optItem] = {btn = btn, check = checkIndicator}
         end
         scroll.CanvasSize = UDim2.new(0, 0, 0, #items * optionHeight)
-        local totalHeight = 48 + #items * optionHeight
         if isOpen then
-            local displayedHeight = math.min(totalHeight, 180)
-            scroll.Size = UDim2.new(1, 0, 0, displayedHeight)
-            TweenService:Create(container, TWEEN_FAST, {Size = UDim2.new(1, 0, 0, 26 + 2 + displayedHeight)}):Play()
-            TweenService:Create(listFrame, TWEEN_FAST, {Size = UDim2.new(1, 0, 0, 2 + displayedHeight)}):Play()
+            local totalContent = #items * optionHeight
+            local scrollHeight = math.min(totalContent, 132)
+            local listHeight   = 48 + scrollHeight + 4
+            scroll.Size = UDim2.new(1, 0, 0, scrollHeight)
+            TweenService:Create(container, TWEEN_FAST, {Size = UDim2.new(1, 0, 0, 26 + listHeight)}):Play()
+            TweenService:Create(listFrame, TWEEN_FAST, {Size = UDim2.new(1, 0, 0, listHeight)}):Play()
         end
     end
     rebuildOptions()
 
-    local function openClose()
+    header.MouseButton1Click:Connect(function()
         if not currentEnabled then return end
         isOpen = not isOpen
         if isOpen then
-            local totalHeight = 48 + #items * optionHeight
-            local displayedHeight = math.min(totalHeight, 180)
-            scroll.Size = UDim2.new(1, 0, 0, displayedHeight)
-            TweenService:Create(container, TWEEN_FAST, {Size = UDim2.new(1, 0, 0, 26 + 2 + displayedHeight)}):Play()
-            TweenService:Create(listFrame, TWEEN_FAST, {Size = UDim2.new(1, 0, 0, 2 + displayedHeight)}):Play()
+            local totalContent = #items * optionHeight
+            local scrollHeight = math.min(totalContent, 132)
+            local listHeight   = 48 + scrollHeight + 4
+            scroll.Size = UDim2.new(1, 0, 0, scrollHeight)
+            TweenService:Create(container, TWEEN_FAST, {Size = UDim2.new(1, 0, 0, 26 + listHeight)}):Play()
+            TweenService:Create(listFrame, TWEEN_FAST, {Size = UDim2.new(1, 0, 0, listHeight)}):Play()
         else
             TweenService:Create(container, TWEEN_FAST, {Size = UDim2.new(1, 0, 0, 24)}):Play()
             TweenService:Create(listFrame, TWEEN_FAST, {Size = UDim2.new(1, 0, 0, 0)}):Play()
         end
-    end
+    end)
 
-    header.MouseButton1Click:Connect(openClose)
     selectAllBtn.MouseButton1Click:Connect(function()
         if not currentEnabled then return end
         for _, optItem in ipairs(items) do
@@ -1657,9 +1929,7 @@ function TabComponent:AddMultiSelectDropdown(options)
 end
 
 -- ════════════════════════════════════════════════════════════════════════════
---  TabComponent:AddMultiSelectSearchableDropdown({ Text, Items, Defaults,
---                                                  Callback, Color, Tooltip,
---                                                  StateKey, Placeholder })
+--  AddMultiSelectSearchableDropdown
 -- ════════════════════════════════════════════════════════════════════════════
 function TabComponent:AddMultiSelectSearchableDropdown(options)
     options = options or {}
@@ -1789,7 +2059,7 @@ function TabComponent:AddMultiSelectSearchableDropdown(options)
         local visibleCount = 0
         for _, optItem in ipairs(items) do
             local btnData = optionButtons[optItem]
-            local match = (q == "" or optItem:lower():find(q, 1, true))
+            local match = (q == "" or tostring(optItem):lower():find(q, 1, true))
             btnData.btn.Visible = match
             if match then visibleCount = visibleCount + 1 end
         end
@@ -1869,8 +2139,7 @@ function TabComponent:AddMultiSelectSearchableDropdown(options)
 end
 
 -- ════════════════════════════════════════════════════════════════════════════
---  TabComponent:AddColorPicker({ Text, Default, Callback, Color,
---                                Tooltip, StateKey })
+--  AddColorPicker
 -- ════════════════════════════════════════════════════════════════════════════
 function TabComponent:AddColorPicker(options)
     options = options or {}
@@ -1917,7 +2186,7 @@ function TabComponent:AddColorPicker(options)
 
     local expandFrame = Instance.new("Frame")
     expandFrame.BackgroundColor3 = theme.TabNormal
-    expandFrame.Position = UDim2.new(0, 0, 0, 26)
+    expandFrame.Position = UDim2.new(0, 0, 0, 24)
     expandFrame.Size = UDim2.new(1, 0, 0, 90)
     expandFrame.Parent = container
     applyBorder(expandFrame, theme.Border)
@@ -2024,7 +2293,7 @@ function TabComponent:AddColorPicker(options)
 end
 
 -- ════════════════════════════════════════════════════════════════════════════
---  TabComponent:AddLabel({ Text, Color, Tooltip })
+--  AddLabel
 -- ════════════════════════════════════════════════════════════════════════════
 function TabComponent:AddLabel(options)
     options = options or {}
@@ -2032,7 +2301,6 @@ function TabComponent:AddLabel(options)
 
     local text    = options.Text or ""
     local tooltip = options.Tooltip
-
     if options.Color then warnCustomColor(self, "Label") end
 
     local lbl = Instance.new("TextLabel")
@@ -2062,7 +2330,9 @@ function TabComponent:AddLabel(options)
     return obj
 end
 
--- ── TabComponent:AddSection({ Text }) ────────────────────────────────────────
+-- ════════════════════════════════════════════════════════════════════════════
+--  AddSection / AddSeparator
+-- ════════════════════════════════════════════════════════════════════════════
 function TabComponent:AddSection(options)
     options = options or {}
     local text = options.Text or ""
@@ -2080,7 +2350,6 @@ function TabComponent:AddSection(options)
     return { GetInstance = function() return lbl end, SetText = function(t) lbl.Text = "── " .. t .. " ──" end }
 end
 
--- ── TabComponent:AddSeparator() ──────────────────────────────────────────────
 function TabComponent:AddSeparator()
     local theme = getTheme(self)
     local sep = Instance.new("Frame")
@@ -2092,8 +2361,7 @@ function TabComponent:AddSeparator()
 end
 
 -- ════════════════════════════════════════════════════════════════════════════
---  TabComponent:AddTextBox({ Text, Placeholder, Default, Callback,
---                            Color, Tooltip, StateKey })
+--  AddTextBox
 -- ════════════════════════════════════════════════════════════════════════════
 function TabComponent:AddTextBox(options)
     options = options or {}
@@ -2117,7 +2385,7 @@ function TabComponent:AddTextBox(options)
 
     local lbl = Instance.new("TextLabel")
     lbl.BackgroundTransparency = 1
-    local lblWidth = text and (TextService:GetTextSize(text .. ":", 13, Enum.Font.RobotoMono, Vector2.new(999, 24)).X + 4) or 0
+    local lblWidth = (text ~= "") and (TextService:GetTextSize(text .. ":", 13, Enum.Font.RobotoMono, Vector2.new(999, 24)).X + 4) or 0
     lbl.Size = UDim2.new(0, lblWidth, 1, 0)
     lbl.Font = Enum.Font.RobotoMono
     lbl.Text = text .. ":"
@@ -2178,7 +2446,7 @@ function TabComponent:AddTextBox(options)
 end
 
 -- ════════════════════════════════════════════════════════════════════════════
---  TabComponent:AddCodeEditor({ Text, Placeholder, Default, Callback })
+--  AddCodeEditor
 -- ════════════════════════════════════════════════════════════════════════════
 function TabComponent:AddCodeEditor(options)
     options = options or {}
@@ -2222,7 +2490,7 @@ function TabComponent:AddCodeEditor(options)
 
     local box = Instance.new("TextBox")
     box.BackgroundTransparency = 1
-    box.Size = UDim2.new(1, -8, 0, 0)
+    box.Size = UDim2.new(1, -8, 0, 80)
     box.Position = UDim2.new(0, 4, 0, 4)
     box.Font = Enum.Font.Code
     box.PlaceholderText = placeholder or "Write code..."
@@ -2238,7 +2506,8 @@ function TabComponent:AddCodeEditor(options)
     box.Parent = scroll
 
     box:GetPropertyChangedSignal("Text"):Connect(function()
-        local textSize = TextService:GetTextSize(box.Text, box.TextSize, box.Font, Vector2.new(scroll.AbsoluteSize.X - 16, math.huge))
+        local availW = math.max(scroll.AbsoluteSize.X - 16, 50)
+        local textSize = TextService:GetTextSize(box.Text, box.TextSize, box.Font, Vector2.new(availW, math.huge))
         box.Size = UDim2.new(1, -8, 0, math.max(textSize.Y + 8, 80))
         scroll.CanvasSize = UDim2.new(0, 0, 0, math.max(textSize.Y + 16, 200))
         if currentEnabled then
@@ -2269,12 +2538,10 @@ function TabComponent:AddCodeEditor(options)
 end
 
 -- ════════════════════════════════════════════════════════════════════════════
---  TabComponent:AddGraph({ Title, MaxPoints, YMin, YMax, LineColor,
---                          SmoothAlpha, MaxLines })
+--  AddGraph
 -- ════════════════════════════════════════════════════════════════════════════
 function TabComponent:AddGraph(options)
     options = options or {}
-    local RunService = cloneref(game:GetService("RunService"))
     local theme      = getTheme(self)
 
     local title       = options.Title or "Graph"
@@ -2418,9 +2685,7 @@ function TabComponent:AddGraph(options)
 end
 
 -- ════════════════════════════════════════════════════════════════════════════
---  TabComponent:AddKeybindPicker({ Text, Default, Callback, Toggle,
---                                  AllowCombos, DefaultState,
---                                  Tooltip, StateKey })
+--  AddKeybindPicker
 -- ════════════════════════════════════════════════════════════════════════════
 function TabComponent:AddKeybindPicker(options)
     options = options or {}
@@ -2452,7 +2717,7 @@ function TabComponent:AddKeybindPicker(options)
             for _, v in ipairs(spec) do
                 if typeof(v) == "EnumItem" then t[#t+1] = v.Name else t[#t+1] = tostring(v) end
             end
-            return t
+            return #t > 0 and t or {"Unbound"}
         end
         if type(spec) == "string" then
             local t = {}
@@ -2675,8 +2940,8 @@ function TabComponent:AddKeybindPicker(options)
         currentEnabled = state
         bindBtn.Active = state
         bindBtn.BackgroundColor3 = state and theme.Accent or disabledColor(theme.Accent)
-        keyDisplay.TextColor3 = state and theme.Text or disabledColor(theme.Text)
         label.TextColor3 = state and theme.Text or disabledColor(theme.Text)
+        updateDisplay()
     end
     function pickerObj:IsEnabled() return currentEnabled end
     function pickerObj:Destroy()
@@ -2698,9 +2963,7 @@ function TabComponent:AddKeybindPicker(options)
 end
 
 -- ════════════════════════════════════════════════════════════════════════════
---  TabComponent:AddViewport({ Title, Model, Size, FOV, StartingRotation,
---                             AutoRotate, RotationSpeed, DragEnabled,
---                             Tooltip })
+--  AddViewport
 -- ════════════════════════════════════════════════════════════════════════════
 function TabComponent:AddViewport(options)
     options = options or {}
@@ -2834,7 +3097,7 @@ function TabComponent:AddViewport(options)
     if options.Model then loadModel(options.Model) end
 
     if options.Tooltip then attachTooltip(viewportFrame, options.Tooltip, self._window) end
-    if self._window and title ~= "" then self._window:_registerSearch(container, title) end
+    if self._window and hasTitle then self._window:_registerSearch(container, title) end
 
     local obj = {}
     function obj:SetModel(newModel) loadModel(newModel) end
@@ -2859,8 +3122,7 @@ function TabComponent:AddViewport(options)
 end
 
 -- ════════════════════════════════════════════════════════════════════════════
---  TabComponent:AddTextToggle({ Text, Default, Callback, OnColor, OffColor,
---                               TextSize, Tooltip, StateKey })
+--  AddTextToggle
 -- ════════════════════════════════════════════════════════════════════════════
 function TabComponent:AddTextToggle(options)
     options = options or {}
@@ -2932,10 +3194,7 @@ function TabComponent:AddTextToggle(options)
 end
 
 -- ════════════════════════════════════════════════════════════════════════════
---  TabComponent:AddProgressBar({ Text, Default, Callback, Min, Max,
---                                Decimals, Height, FillColor,
---                                BackgroundColor, TextColor,
---                                Tooltip, StateKey })
+--  AddProgressBar
 -- ════════════════════════════════════════════════════════════════════════════
 function TabComponent:AddProgressBar(options)
     options = options or {}
@@ -2988,7 +3247,7 @@ function TabComponent:AddProgressBar(options)
 
     local function formatText()
         local pct = (value - min) / (max - min) * 100
-        local label = text and (text .. " ") or ""
+        local label = (text ~= "") and (text .. " ") or ""
         return string.format("%s%.2f%%", label, pct)
     end
     local function refresh()
@@ -2999,7 +3258,7 @@ function TabComponent:AddProgressBar(options)
     refresh()
 
     if tooltip then attachTooltip(container, tooltip, self._window) end
-    if self._window and text then self._window:_registerSearch(container, text) end
+    if self._window and text ~= "" then self._window:_registerSearch(container, text) end
 
     local obj = {}
     function obj:GetValue() return value end
@@ -3034,16 +3293,17 @@ function TabComponent:AddProgressBar(options)
 end
 
 -- ════════════════════════════════════════════════════════════════════════════
---  TabComponent:AddImage({ Image, Size, ScaleType, BackgroundTransparency,
---                          CornerRadius, Border, Tooltip })
+--  AddImage
 -- ════════════════════════════════════════════════════════════════════════════
 function TabComponent:AddImage(options)
     options = options or {}
     local theme = getTheme(self)
 
     local imageId = options.Image
-    if type(imageId) == "number" or tonumber(imageId) then
+    if type(imageId) == "number" then
         imageId = "rbxassetid://" .. tostring(imageId)
+    elseif type(imageId) == "string" and tonumber(imageId) then
+        imageId = "rbxassetid://" .. imageId
     end
     imageId = imageId or ""
 
@@ -3067,7 +3327,7 @@ function TabComponent:AddImage(options)
 
     local obj = {}
     function obj:SetImage(id)
-        if type(id) == "number" or tonumber(id) then id = "rbxassetid://" .. tostring(id) end
+        if type(id) == "number" then id = "rbxassetid://" .. tostring(id) end
         imgLabel.Image = id
     end
     function obj:GetImage() return imgLabel.Image end
@@ -3086,9 +3346,7 @@ function TabComponent:AddImage(options)
 end
 
 -- ════════════════════════════════════════════════════════════════════════════
---  TabComponent:AddLayout({ Style, Padding, Size, Position,
---                           BackgroundColor, BackgroundTransparency,
---                           CellSize, CellPadding, Columns })
+--  AddLayout
 -- ════════════════════════════════════════════════════════════════════════════
 function TabComponent:AddLayout(options)
     options = options or {}
@@ -3121,7 +3379,6 @@ function TabComponent:AddLayout(options)
     applyBorder(container, theme.Border)
 
     local layout
-
     if style == "Vertical" then
         layout = Instance.new("UIListLayout")
         layout.FillDirection = Enum.FillDirection.Vertical
@@ -3197,7 +3454,6 @@ function TabComponent:AddLayout(options)
 
                     wrapper.LayoutOrder = dummyTab._layoutOrder
                     dummyTab._layoutOrder = dummyTab._layoutOrder + 1
-
                     return comp
                 end
 
@@ -3222,7 +3478,6 @@ function TabComponent:AddLayout(options)
                         inst.AnchorPoint = Vector2.new(0, 0)
                         inst.Position = UDim2.new(0, 0, 0, 0)
                         inst.Size = UDim2.new(1, 0, 1, 0)
-
                         return comp
                     end
                 end
@@ -3241,7 +3496,7 @@ function TabComponent:AddLayout(options)
 end
 
 -- ════════════════════════════════════════════════════════════════════════════
---  TabComponent:AddTable({ Headers, Rows, HeaderHeight, RowHeight, MaxHeight })
+--  AddTable
 -- ════════════════════════════════════════════════════════════════════════════
 function TabComponent:AddTable(options)
     options = options or {}
@@ -3294,7 +3549,7 @@ function TabComponent:AddTable(options)
     end
 
     local rowFrames = {}
-    for r, rowData in ipairs(rows) do
+    local function buildRow(r, rowData)
         local rowFrame = Instance.new("Frame")
         rowFrame.BackgroundColor3 = r % 2 == 0 and theme.FrameBg or theme.WindowBg
         rowFrame.Size = UDim2.new(1, 0, 0, rowHeight)
@@ -3325,39 +3580,13 @@ function TabComponent:AddTable(options)
         table.insert(rowFrames, rowFrame)
     end
 
+    for r, rowData in ipairs(rows) do buildRow(r, rowData) end
+
     local obj = {}
     function obj:SetData(newRows)
         for _, frame in ipairs(rowFrames) do frame:Destroy() end
         table.clear(rowFrames)
-        for r, rowData in ipairs(newRows) do
-            local rowFrame = Instance.new("Frame")
-            rowFrame.BackgroundColor3 = r % 2 == 0 and theme.FrameBg or theme.WindowBg
-            rowFrame.Size = UDim2.new(1, 0, 0, rowHeight)
-            rowFrame.Position = UDim2.new(0, 0, 0, headerHeight + (r-1) * rowHeight)
-            rowFrame.Parent = scroll
-            applyBorder(rowFrame, theme.Border)
-
-            local rowLayout = Instance.new("UIListLayout")
-            rowLayout.FillDirection = Enum.FillDirection.Horizontal
-            rowLayout.SortOrder = Enum.SortOrder.LayoutOrder
-            rowLayout.Padding = UDim.new(0, 0)
-            rowLayout.Parent = rowFrame
-
-            for c, cell in ipairs(rowData) do
-                local cellLabel = Instance.new("TextLabel")
-                cellLabel.BackgroundTransparency = 1
-                cellLabel.Size = UDim2.new(1 / #headers, 0, 1, 0)
-                cellLabel.Font = Enum.Font.RobotoMono
-                cellLabel.Text = tostring(cell)
-                cellLabel.TextColor3 = theme.SubText
-                cellLabel.TextSize = 12
-                cellLabel.TextXAlignment = Enum.TextXAlignment.Center
-                cellLabel.Parent = rowFrame
-                cellLabel.LayoutOrder = c
-                cellLabel.TextWrapped = true
-            end
-            table.insert(rowFrames, rowFrame)
-        end
+        for r, rowData in ipairs(newRows) do buildRow(r, rowData) end
         scroll.CanvasSize = UDim2.new(0, 0, 0, #newRows * rowHeight + headerHeight)
         container.Size = UDim2.new(1, 0, 0, math.min(#newRows * rowHeight + headerHeight, maxHeight))
     end
@@ -3367,14 +3596,13 @@ function TabComponent:AddTable(options)
 end
 
 -- ════════════════════════════════════════════════════════════════════════════
---  TabComponent:AddCollapsible({ Title })
+--  AddCollapsible
 -- ════════════════════════════════════════════════════════════════════════════
 function TabComponent:AddCollapsible(options)
     options = options or {}
     local theme = getTheme(self)
 
     local title = options.Title or "Section"
-
     local isOpen = true
     local currentEnabled = true
 
@@ -3479,28 +3707,191 @@ function TabComponent:AddCollapsible(options)
     function collapsible:Destroy() container:Destroy() end
 
     if self._window then self._window:_registerSearch(headerBtn, title) end
-
     return collapsible
 end
 
 -- ════════════════════════════════════════════════════════════════════════════
---  RGui:CreateWatermark({ Text, Icon, Position, TextColor, TextSize,
---                         BackgroundColor, BackgroundTransparency, Font })
+--  AddNumberInput
 -- ════════════════════════════════════════════════════════════════════════════
-function RGui:CreateWatermark(options)
+function TabComponent:AddNumberInput(options)
+    options = options or {}
+    local theme = getTheme(self)
+
+    local text     = options.Text or "Value"
+    local min      = options.Min  or 0
+    local max      = options.Max  or 100
+    local default  = options.Default
+    local callback = options.Callback
+    local tooltip  = options.Tooltip
+
+    local isFloat = options.Float or false
+    local decimals = options.Decimals or 1
+    local step = options.Step or (isFloat and (10 ^ -decimals) or 1)
+    local inputWidth = options.Width or 70
+    local currentCallback = callback
+    local currentEnabled = true
+
+    local value = math.clamp(default or min, min, max)
+
+    local function clampValue(v)
+        v = math.clamp(v, min, max)
+        if isFloat then
+            v = math.floor(v * (10 ^ decimals) + 0.5) / (10 ^ decimals)
+        else
+            v = math.floor(v + 0.5)
+        end
+        return v
+    end
+    value = clampValue(value)
+
+    local container = Instance.new("Frame")
+    container.BackgroundTransparency = 1
+    container.Size = UDim2.new(1, 0, 0, 24)
+    container.LayoutOrder = self:_nextOrder()
+    container.Parent = self._page
+
+    local label = Instance.new("TextLabel")
+    label.BackgroundTransparency = 1
+    label.Position = UDim2.new(0, 4, 0, 0)
+    label.Size = UDim2.new(1, -inputWidth - 60, 1, 0)
+    label.Font = Enum.Font.RobotoMono
+    label.Text = text
+    label.TextColor3 = theme.Text
+    label.TextSize = 13
+    label.TextXAlignment = Enum.TextXAlignment.Left
+    label.Parent = container
+
+    local minusBtn = Instance.new("TextButton")
+    minusBtn.BackgroundColor3 = options.Color or theme.FrameBg
+    minusBtn.Position = UDim2.new(1, -(inputWidth + 52), 0, 0)
+    minusBtn.Size = UDim2.new(0, 24, 1, 0)
+    minusBtn.Font = Enum.Font.RobotoMono
+    minusBtn.Text = "-"
+    minusBtn.TextColor3 = theme.Text
+    minusBtn.TextSize = 14
+    minusBtn.Parent = container
+    applyCorner(minusBtn, 2)
+    applyBorder(minusBtn, theme.Border)
+
+    local box = Instance.new("TextBox")
+    box.BackgroundColor3 = options.Color or theme.FrameBg
+    box.Position = UDim2.new(1, -(inputWidth + 24), 0, 0)
+    box.Size = UDim2.new(0, inputWidth, 1, 0)
+    box.Font = Enum.Font.RobotoMono
+    box.Text = isFloat and string.format("%." .. decimals .. "f", value) or tostring(value)
+    box.TextColor3 = theme.Text
+    box.TextSize = 13
+    box.TextXAlignment = Enum.TextXAlignment.Center
+    box.ClearTextOnFocus = false
+    box.Parent = container
+    applyCorner(box, 2)
+    applyBorder(box, theme.Border)
+
+    local plusBtn = Instance.new("TextButton")
+    plusBtn.BackgroundColor3 = options.Color or theme.FrameBg
+    plusBtn.Position = UDim2.new(1, -24, 0, 0)
+    plusBtn.Size = UDim2.new(0, 24, 1, 0)
+    plusBtn.Font = Enum.Font.RobotoMono
+    plusBtn.Text = "+"
+    plusBtn.TextColor3 = theme.Text
+    plusBtn.TextSize = 14
+    plusBtn.Parent = container
+    applyCorner(plusBtn, 2)
+    applyBorder(plusBtn, theme.Border)
+
+    local function refreshText()
+        if isFloat then
+            box.Text = string.format("%." .. decimals .. "f", value)
+        else
+            box.Text = tostring(value)
+        end
+    end
+
+    local function setValue(newVal, fire)
+        local clamped = clampValue(newVal)
+        if clamped == value then refreshText(); return end
+        value = clamped
+        refreshText()
+        if fire ~= false then safeCall(currentCallback, value) end
+    end
+
+    minusBtn.MouseButton1Click:Connect(function()
+        if not currentEnabled then return end
+        setValue(value - step)
+    end)
+    plusBtn.MouseButton1Click:Connect(function()
+        if not currentEnabled then return end
+        setValue(value + step)
+    end)
+
+    local function addHover(btn)
+        btn.MouseEnter:Connect(function()
+            if currentEnabled then btn.BackgroundColor3 = options.Color and lightenColor(options.Color) or theme.FrameBgHover end
+        end)
+        btn.MouseLeave:Connect(function()
+            btn.BackgroundColor3 = options.Color or theme.FrameBg
+        end)
+    end
+    addHover(minusBtn)
+    addHover(plusBtn)
+
+    box.FocusLost:Connect(function()
+        if not currentEnabled then return end
+        local n = tonumber(box.Text)
+        if n then setValue(n) else refreshText() end
+    end)
+
+    box.InputChanged:Connect(function(input)
+        if not currentEnabled then return end
+        if input.UserInputType == Enum.UserInputType.MouseWheel then
+            setValue(value + step * input.Position.Z)
+        end
+    end)
+
+    if tooltip then attachTooltip(box, tooltip, self._window) end
+    if self._window then self._window:_registerSearch(container, text) end
+
+    local obj = {}
+    function obj:GetValue() return value end
+    function obj:SetValue(v) setValue(v) end
+    function obj:SetCallback(cb) currentCallback = cb end
+    function obj:SetEnabled(state)
+        currentEnabled = state
+        minusBtn.Active = state
+        plusBtn.Active = state
+        box.Active = state
+        local base = state and (options.Color or theme.FrameBg) or disabledColor(options.Color or theme.FrameBg)
+        minusBtn.BackgroundColor3 = base
+        plusBtn.BackgroundColor3 = base
+        box.BackgroundColor3 = base
+        box.TextColor3 = state and theme.Text or disabledColor(theme.Text)
+    end
+    function obj:IsEnabled() return currentEnabled end
+    function obj:Destroy() container:Destroy() end
+    function obj:GetInstance() return container end
+
+    local key = options.StateKey or self._window:_autoStateKey("tab", text)
+    self._window:_registerState(key, function() return value end, function(v) obj:SetValue(v) end)
+
+    return obj
+end
+
+-- ════════════════════════════════════════════════════════════════════════════
+--  Watermark
+-- ════════════════════════════════════════════════════════════════════════════
+function Axiom:CreateWatermark(options)
     options = options or {}
     local theme = self._theme
-
     local text = options.Text or ""
 
     local wmGui = Instance.new("ScreenGui")
-    wmGui.Name = "RGui_Watermark"
+    wmGui.Name = "Axiom_Watermark"
     wmGui.ResetOnSpawn = false
     wmGui.Parent = CoreGui
 
     local wmFrame = Instance.new("Frame")
     wmFrame.BackgroundColor3 = options.BackgroundColor or theme.TitleBg
-    wmFrame.BackgroundTransparency = options.BackgroundTransparency or 0.4
+    wmFrame.BackgroundTransparency = options.BackgroundTransparency ~= nil and options.BackgroundTransparency or 0.4
     wmFrame.Position = options.Position or UDim2.new(0, 10, 0, 10)
     wmFrame.Size = UDim2.new(0, 0, 0, 0)
     wmFrame.Parent = wmGui
@@ -3561,7 +3952,7 @@ function RGui:CreateWatermark(options)
         if newOptions.TextColor then wmLabel.TextColor3 = newOptions.TextColor end
         if newOptions.TextSize then wmLabel.TextSize = newOptions.TextSize end
         if newOptions.BackgroundColor then wmFrame.BackgroundColor3 = newOptions.BackgroundColor end
-        if newOptions.BackgroundTransparency then wmFrame.BackgroundTransparency = newOptions.BackgroundTransparency end
+        if newOptions.BackgroundTransparency ~= nil then wmFrame.BackgroundTransparency = newOptions.BackgroundTransparency end
         if newOptions.Position then wmFrame.Position = newOptions.Position end
         if newOptions.Font then wmLabel.Font = newOptions.Font end
         updateSize()
@@ -3572,11 +3963,11 @@ function RGui:CreateWatermark(options)
 end
 
 -- ════════════════════════════════════════════════════════════════════════════
---  RGui.Validators (unchanged)
+--  Validators
 -- ════════════════════════════════════════════════════════════════════════════
-RGui.Validators = {}
+Axiom.Validators = {}
 
-function RGui.Validators.GamePass(passId, options)
+function Axiom.Validators.GamePass(passId, options)
     options = options or {}
     return {
         Tier            = options.Tier            or "VIP",
@@ -3596,7 +3987,7 @@ function RGui.Validators.GamePass(passId, options)
     }
 end
 
-function RGui.Validators.DevProduct(productId, options)
+function Axiom.Validators.DevProduct(productId, options)
     options = options or {}
     return {
         Tier    = options.Tier    or "VIP",
@@ -3612,7 +4003,7 @@ function RGui.Validators.DevProduct(productId, options)
     }
 end
 
-function RGui.Validators.UserId(ids, options)
+function Axiom.Validators.UserId(ids, options)
     options = options or {}
     local set = {}
     for _, id in ipairs(ids) do set[id] = true end
@@ -3626,7 +4017,7 @@ function RGui.Validators.UserId(ids, options)
     }
 end
 
-function RGui.Validators.Username(names, options)
+function Axiom.Validators.Username(names, options)
     options = options or {}
     local set = {}
     for _, n in ipairs(names) do set[n:lower()] = true end
@@ -3640,7 +4031,7 @@ function RGui.Validators.Username(names, options)
     }
 end
 
-function RGui.Validators.Currency(attr, amount, options)
+function Axiom.Validators.Currency(attr, amount, options)
     options = options or {}
     return {
         Tier    = options.Tier    or "VIP",
@@ -3656,10 +4047,10 @@ function RGui.Validators.Currency(attr, amount, options)
     }
 end
 
--- ============================================================
---  RGui:CreateKeySystem(config)  – unchanged (already table-based)
--- ============================================================
-function RGui:CreateKeySystem(config)
+-- ════════════════════════════════════════════════════════════════════════════
+--  Key System
+-- ════════════════════════════════════════════════════════════════════════════
+function Axiom:CreateKeySystem(config)
     if self._keySystemGui then
         pcall(function() self._keySystemGui:Destroy() end)
         self._keySystemGui = nil
@@ -3674,7 +4065,7 @@ function RGui:CreateKeySystem(config)
     local retryCD    = config.RetryCooldown or 15
     local onLockout  = config.OnLockout
     local saveKey    = config.SaveKey     or false
-    local saveId     = (config.SaveId     or "rgui_key") .. ".txt"
+    local saveId     = (config.SaveId     or "axiom_key") .. ".txt"
 
     local TIER_COLORS = {
         Free      = Color3.fromRGB(110, 115, 125),
@@ -3701,7 +4092,7 @@ function RGui:CreateKeySystem(config)
     local savedKey = ""
     if saveKey then
         pcall(function()
-            if readfile then savedKey = readfile(saveId) or "" end
+            if readfile and isfile and isfile(saveId) then savedKey = readfile(saveId) or "" end
         end)
     end
 
@@ -3711,9 +4102,10 @@ function RGui:CreateKeySystem(config)
     local isMasked        = false
     local realKey         = savedKey
     local isValidating    = false
+    local isServiceOpen   = false
 
     local keyScreen = Instance.new("ScreenGui")
-    keyScreen.Name         = "RGui_KeySystem"
+    keyScreen.Name         = "Axiom_KeySystem"
     keyScreen.ResetOnSpawn = false
     keyScreen.Parent       = CoreGui
     self._keySystemGui     = keyScreen
@@ -4003,6 +4395,8 @@ function RGui:CreateKeySystem(config)
     applyCorner(howToBtn, 2)
     applyBorder(howToBtn, theme.Border)
 
+    local howToConn
+
     local function refreshRightPanel(srvName)
         local data      = services[srvName]
         if not data then return end
@@ -4010,18 +4404,15 @@ function RGui:CreateKeySystem(config)
         local tier      = data.Tier    or "Free"
         local isPremium = data.Premium or false
 
-        tierBadgeLabel.Text            = tier:upper()
+        tierBadgeLabel.Text            = string.upper(tier)
         tierBadge.BackgroundColor3     = TIER_COLORS[tier] or theme.Accent
         premiumBadge.Visible = isPremium
 
         local link = data.HowToLink
         howToBtn.Visible = link ~= nil
-        if howToBtn:FindFirstChild("_conn") then
-            howToBtn._conn:Disconnect()
-        end
+        if howToConn then howToConn:Disconnect(); howToConn = nil end
         if link then
-            howToBtn._conn = howToBtn.MouseButton1Click:Connect(function()
-                pcall(game.GetService, game, "GuiService")
+            howToConn = howToBtn.MouseButton1Click:Connect(function()
                 pcall(function()
                     game:GetService("GuiService"):OpenBrowserWindow(link)
                 end)
@@ -4061,7 +4452,6 @@ function RGui:CreateKeySystem(config)
         end)
     end
 
-    local isServiceOpen = false
     serviceBtn.MouseButton1Click:Connect(function()
         isServiceOpen = not isServiceOpen
         if isServiceOpen then
@@ -4102,7 +4492,7 @@ function RGui:CreateKeySystem(config)
 
         local remaining = retryCD
         local function tick()
-            remaining -= 1
+            remaining = remaining - 1
             statusLbl.Text = "Retry in " .. remaining .. "s…"
             if remaining <= 0 then
                 retryCount     = 0
@@ -4161,9 +4551,8 @@ function RGui:CreateKeySystem(config)
                 task.spawn(function()
                     onSuccess(selectedService, key, tier, isPremium)
                 end)
-
             else
-                retryCount += 1
+                retryCount = retryCount + 1
 
                 keyInput.BackgroundColor3 = Color3.fromRGB(180, 45, 45)
                 task.delay(0.35, function()
@@ -4245,19 +4634,17 @@ function RGui:CreateKeySystem(config)
     return keySys
 end
 
-function RGui:IsPremium()
+function Axiom:IsPremium()
     return self._isPremium == true
 end
 
-function RGui:GetTier()
+function Axiom:GetTier()
     return self._tier or "Free"
 end
 
--- ============================================================
---  RGui:Notify({ Title, Description, Duration, Type, Color, Icon,
---                Position, MaxStack, BackgroundColor,
---                TitleColor, MessageColor })
--- ============================================================
+-- ════════════════════════════════════════════════════════════════════════════
+--  Notifications
+-- ════════════════════════════════════════════════════════════════════════════
 local _NOTIFY_PRESETS = {
     success = {headerColor = Color3.fromRGB(38,  175, 75),  icon = "✔"},
     error   = {headerColor = Color3.fromRGB(200, 48,  48),  icon = "✖"},
@@ -4265,9 +4652,8 @@ local _NOTIFY_PRESETS = {
     info    = {headerColor = Color3.fromRGB(55,  135, 220), icon = "ℹ"},
 }
 
-function RGui:Notify(options)
+function Axiom:Notify(options)
     options = options or {}
-
     local theme    = self._theme
     local title    = options.Title       or "Notification"
     local message  = options.Description or ""
@@ -4279,7 +4665,7 @@ function RGui:Notify(options)
 
     if not self._notificationGui or not self._notificationGui.Parent then
         local gui = Instance.new("ScreenGui")
-        gui.Name         = "RGui_Notifications"
+        gui.Name         = "Axiom_Notifications"
         gui.ResetOnSpawn = false
         gui.Parent       = CoreGui
         self._notificationGui = gui
@@ -4431,7 +4817,7 @@ function RGui:Notify(options)
     return frame
 end
 
-function RGui:DismissAllNotifications()
+function Axiom:DismissAllNotifications()
     if not self._notifyStack then return end
     for _, frame in ipairs(self._notifyStack) do
         if frame and frame.Parent then frame:Destroy() end
@@ -4439,19 +4825,19 @@ function RGui:DismissAllNotifications()
     self._notifyStack = {}
 end
 
-function RGui:SetNotifyPosition(pos)
+function Axiom:SetNotifyPosition(pos)
     self._notifyPosition = pos
 end
 
-function RGui:SetNotifyMaxStack(n)
+function Axiom:SetNotifyMaxStack(n)
     self._notifyMaxStack = n
 end
 
--- ============================================================
---  RGui:ShowDialog({ Title, Message, Buttons })
--- ============================================================
-function RGui:ShowDialog(options)
-    local theme = self._theme or RGui.DefaultTheme
+-- ════════════════════════════════════════════════════════════════════════════
+--  Dialog / Loading
+-- ════════════════════════════════════════════════════════════════════════════
+function Axiom:ShowDialog(options)
+    local theme = self._theme or Axiom.DefaultTheme
     options = options or {}
 
     local dialogFrame = Instance.new("Frame")
@@ -4538,13 +4924,10 @@ function RGui:ShowDialog(options)
     return dialogFrame
 end
 
--- ============================================================
---  RGui:ShowLoadingScreen({ Title })
--- ============================================================
-function RGui:ShowLoadingScreen(options)
+function Axiom:ShowLoadingScreen(options)
     options = options or {}
     local title = options.Title
-    local theme = self._theme or RGui.DefaultTheme
+    local theme = self._theme or Axiom.DefaultTheme
     if self._mainFrame then self._mainFrame.Visible = false end
 
     local loadFrame = Instance.new("Frame")
@@ -4620,184 +5003,12 @@ function RGui:ShowLoadingScreen(options)
 end
 
 -- ════════════════════════════════════════════════════════════════════════════
---  TabComponent:AddNumberInput({ Text, Min, Max, Default, Callback,
---                                Step, Float, Decimals, Width, Color,
---                                Tooltip, StateKey })
+--  Theme / Config / Destroy
 -- ════════════════════════════════════════════════════════════════════════════
-function TabComponent:AddNumberInput(options)
-    options = options or {}
-    local theme = getTheme(self)
-
-    local text     = options.Text or "Value"
-    local min      = options.Min  or 0
-    local max      = options.Max  or 100
-    local default  = options.Default
-    local callback = options.Callback
-    local tooltip  = options.Tooltip
-
-    local isFloat = options.Float or false
-    local decimals = options.Decimals or 1
-    local step = options.Step or (isFloat and (10 ^ -decimals) or 1)
-    local inputWidth = options.Width or 70
-    local currentCallback = callback
-    local currentEnabled = true
-
-    local value = math.clamp(default or min, min, max)
-
-    local function clampValue(v)
-        v = math.clamp(v, min, max)
-        if isFloat then
-            v = math.floor(v * (10 ^ decimals) + 0.5) / (10 ^ decimals)
-        else
-            v = math.floor(v + 0.5)
-        end
-        return v
-    end
-    value = clampValue(value)
-
-    local container = Instance.new("Frame")
-    container.BackgroundTransparency = 1
-    container.Size = UDim2.new(1, 0, 0, 24)
-    container.LayoutOrder = self:_nextOrder()
-    container.Parent = self._page
-
-    local label = Instance.new("TextLabel")
-    label.BackgroundTransparency = 1
-    label.Position = UDim2.new(0, 4, 0, 0)
-    label.Size = UDim2.new(1, -inputWidth - 60, 1, 0)
-    label.Font = Enum.Font.RobotoMono
-    label.Text = text
-    label.TextColor3 = theme.Text
-    label.TextSize = 13
-    label.TextXAlignment = Enum.TextXAlignment.Left
-    label.Parent = container
-
-    local minusBtn = Instance.new("TextButton")
-    minusBtn.BackgroundColor3 = options.Color or theme.FrameBg
-    minusBtn.Position = UDim2.new(1, -(inputWidth + 52), 0, 0)
-    minusBtn.Size = UDim2.new(0, 24, 1, 0)
-    minusBtn.Font = Enum.Font.RobotoMono
-    minusBtn.Text = "-"
-    minusBtn.TextColor3 = theme.Text
-    minusBtn.TextSize = 14
-    minusBtn.Parent = container
-    applyCorner(minusBtn, 2)
-    applyBorder(minusBtn, theme.Border)
-
-    local box = Instance.new("TextBox")
-    box.BackgroundColor3 = options.Color or theme.FrameBg
-    box.Position = UDim2.new(1, -(inputWidth + 24), 0, 0)
-    box.Size = UDim2.new(0, inputWidth, 1, 0)
-    box.Font = Enum.Font.RobotoMono
-    box.Text = isFloat and string.format("%." .. decimals .. "f", value) or tostring(value)
-    box.TextColor3 = theme.Text
-    box.TextSize = 13
-    box.TextXAlignment = Enum.TextXAlignment.Center
-    box.ClearTextOnFocus = false
-    box.Parent = container
-    applyCorner(box, 2)
-    applyBorder(box, theme.Border)
-
-    local plusBtn = Instance.new("TextButton")
-    plusBtn.BackgroundColor3 = options.Color or theme.FrameBg
-    plusBtn.Position = UDim2.new(1, -24, 0, 0)
-    plusBtn.Size = UDim2.new(0, 24, 1, 0)
-    plusBtn.Font = Enum.Font.RobotoMono
-    plusBtn.Text = "+"
-    plusBtn.TextColor3 = theme.Text
-    plusBtn.TextSize = 14
-    plusBtn.Parent = container
-    applyCorner(plusBtn, 2)
-    applyBorder(plusBtn, theme.Border)
-
-    local function refreshText()
-        if isFloat then
-            box.Text = string.format("%." .. decimals .. "f", value)
-        else
-            box.Text = tostring(value)
-        end
-    end
-
-    local function setValue(newVal, fire)
-        local clamped = clampValue(newVal)
-        if clamped == value then refreshText(); return end
-        value = clamped
-        refreshText()
-        if fire ~= false then safeCall(currentCallback, value) end
-    end
-
-    minusBtn.MouseButton1Click:Connect(function()
-        if not currentEnabled then return end
-        setValue(value - step)
-    end)
-    plusBtn.MouseButton1Click:Connect(function()
-        if not currentEnabled then return end
-        setValue(value + step)
-    end)
-
-    local function addHover(btn)
-        btn.MouseEnter:Connect(function()
-            if currentEnabled then btn.BackgroundColor3 = options.Color or theme.FrameBgHover end
-        end)
-        btn.MouseLeave:Connect(function()
-            btn.BackgroundColor3 = options.Color or theme.FrameBg
-        end)
-    end
-    addHover(minusBtn)
-    addHover(plusBtn)
-
-    box.FocusLost:Connect(function()
-        if not currentEnabled then return end
-        local n = tonumber(box.Text)
-        if n then
-            setValue(n)
-        else
-            refreshText()
-        end
-    end)
-
-    box.InputChanged:Connect(function(input)
-        if not currentEnabled then return end
-        if input.UserInputType == Enum.UserInputType.MouseWheel then
-            setValue(value + step * input.Position.Z)
-        end
-    end)
-
-    if tooltip then attachTooltip(box, tooltip, self._window) end
-    if self._window then self._window:_registerSearch(container, text) end
-
-    local obj = {}
-    function obj:GetValue() return value end
-    function obj:SetValue(v) setValue(v) end
-    function obj:SetCallback(cb) currentCallback = cb end
-    function obj:SetEnabled(state)
-        currentEnabled = state
-        minusBtn.Active = state
-        plusBtn.Active = state
-        box.Active = state
-        local base = state and (options.Color or theme.FrameBg) or disabledColor(options.Color or theme.FrameBg)
-        minusBtn.BackgroundColor3 = base
-        plusBtn.BackgroundColor3 = base
-        box.BackgroundColor3 = base
-        box.TextColor3 = state and theme.Text or disabledColor(theme.Text)
-    end
-    function obj:IsEnabled() return currentEnabled end
-    function obj:Destroy() container:Destroy() end
-    function obj:GetInstance() return container end
-
-    local key = options.StateKey or self._window:_autoStateKey("tab", text)
-    self._window:_registerState(key, function() return value end, function(v) obj:SetValue(v) end)
-
-    return obj
-end
-
--- ════════════════════════════════════════════════════════════════════════════
---  SetTheme / Lucide / Config / Destroy
--- ════════════════════════════════════════════════════════════════════════════
-function RGui:SetTheme(newTheme)
+function Axiom:SetTheme(newTheme)
     local oldTheme = self._theme
     local merged = {}
-    for k, v in pairs(RGui.DefaultTheme) do merged[k] = v end
+    for k, v in pairs(Axiom.DefaultTheme) do merged[k] = v end
     if newTheme then for k, v in pairs(newTheme) do merged[k] = v end end
     self._theme = merged
 
@@ -4833,23 +5044,27 @@ function RGui:SetTheme(newTheme)
     if self._mainFrame then scan(self._mainFrame) end
 end
 
-RGui.Lucide = nil
-function RGui:LoadLucide()
-    if not RGui.Lucide then
-        RGui.Lucide = loadstring(game:HttpGet(
-            "https://raw.githubusercontent.com/xxpwnxxx420lord/Lucide.Lua/refs/heads/main/lucide.lua"
-        ))()
+Axiom.Lucide = nil
+function Axiom:LoadLucide()
+    if not Axiom.Lucide then
+        local ok, result = pcall(function()
+            return loadstring(game:HttpGet(
+                "https://raw.githubusercontent.com/xxpwnxxx420lord/Lucide.Lua/refs/heads/main/lucide.lua"
+            ))()
+        end)
+        if ok then Axiom.Lucide = result end
     end
-    return RGui.Lucide
+    return Axiom.Lucide
 end
 
-function RGui:GetLucideIcon(name, options)
+function Axiom:GetLucideIcon(name, options)
     local lucide = self:LoadLucide()
+    if not lucide then return nil end
     return lucide:geticon(name, options or {})
 end
 
-RGui.Config = {}
-function RGui.Config.new(folder, filename)
+Axiom.Config = {}
+function Axiom.Config.new(folder, filename)
     folder = folder or "Axiom"
     filename = filename or "config.json"
     local fullPath = folder .. "/" .. filename
@@ -4857,18 +5072,20 @@ function RGui.Config.new(folder, filename)
     local self = {}
     self._data = {}
 
-    if isfolder and not isfolder(folder) then makefolder(folder) end
+    if isfolder and makefolder and not isfolder(folder) then pcall(makefolder, folder) end
 
     local function saveToStorage(tbl)
-        local json = HttpService:JSONEncode(tbl)
-        writefile(fullPath, json)
+        if not writefile then return end
+        local ok, json = pcall(function() return HttpService:JSONEncode(tbl) end)
+        if ok then pcall(writefile, fullPath, json) end
     end
 
     local function loadFromStorage()
-        if not isfile(fullPath) then return {} end
-        local json = readfile(fullPath)
-        local success, decoded = pcall(function() return HttpService:JSONDecode(json) end)
-        if success and type(decoded) == "table" then return decoded end
+        if not (isfile and readfile and isfile(fullPath)) then return {} end
+        local ok, decoded = pcall(function()
+            return HttpService:JSONDecode(readfile(fullPath))
+        end)
+        if ok and type(decoded) == "table" then return decoded end
         return {}
     end
 
@@ -4888,11 +5105,133 @@ function RGui.Config.new(folder, filename)
     return self
 end
 
-function RGui:Destroy()
-    if self._watermark then self._watermark:Destroy() end
-    if self._notificationGui then self._notificationGui:Destroy() end
-    if tooltipGui then tooltipGui:Destroy(); tooltipGui = nil end
-    self._screen:Destroy()
+function Axiom:Destroy()
+    if self._watermark then pcall(function() self._watermark:Destroy() end) end
+    if self._notificationGui then pcall(function() self._notificationGui:Destroy() end) end
+    if self._keySystemGui then pcall(function() self._keySystemGui:Destroy() end) end
+    if tooltipGui then pcall(function() tooltipGui:Destroy() end); tooltipGui = nil end
+    if self._screen then pcall(function() self._screen:Destroy() end) end
 end
 
-return RGui
+-- ═══════════════════════════════════════════════════════════════════════════
+--  Vanilla tab-layout support
+-- ═══════════════════════════════════════════════════════════════════════════
+do
+    local VALID = { top = true, bottom = true, left = true, right = true }
+
+    local function findResizer(container)
+        local body = container.Parent
+        if not body then return nil end
+        for _, c in ipairs(body:GetChildren()) do
+            if c:IsA("TextButton") and c.Text == "◢" then return c end
+        end
+        return nil
+    end
+
+    local function hasIcon(tabBtn)
+        return tabBtn:FindFirstChildWhichIsA("ImageLabel", true) ~= nil
+    end
+
+    local function applyLayout(self, layout)
+        layout = layout or "top"
+        if not VALID[layout] then
+            warn("[Axiom] invalid layout '" .. tostring(layout) .. "', using 'top'")
+            layout = "top"
+        end
+        self._tabLayoutMode = layout
+
+        local tb = self._tabContainer
+        local pc = self._pageContainer
+        if not (tb and pc) then
+            warn("[Axiom] applyLayout: self is not a window")
+            return
+        end
+
+        local tl = tb:FindFirstChildOfClass("UIListLayout")
+        if not tl then
+            tl = Instance.new("UIListLayout")
+            tl.SortOrder = Enum.SortOrder.LayoutOrder
+            tl.Parent = tb
+        end
+
+        local resizer = findResizer(tb)
+        local w = self._tabBarWidth or 120
+
+        if layout == "top" then
+            tb.Position = UDim2.new(0, 0, 0, 0);   tb.Size = UDim2.new(1, 0, 0, 26)
+            pc.Position = UDim2.new(0, 0, 0, 26);  pc.Size = UDim2.new(1, 0, 1, -26)
+            tl.FillDirection     = Enum.FillDirection.Horizontal
+            tl.VerticalAlignment = Enum.VerticalAlignment.Center
+            if resizer then resizer.Position = UDim2.new(1, -12, 1, -12) end
+        elseif layout == "bottom" then
+            tb.Position = UDim2.new(0, 0, 1, -26); tb.Size = UDim2.new(1, 0, 0, 26)
+            pc.Position = UDim2.new(0, 0, 0, 0);   pc.Size = UDim2.new(1, 0, 1, -26)
+            tl.FillDirection     = Enum.FillDirection.Horizontal
+            tl.VerticalAlignment = Enum.VerticalAlignment.Center
+            if resizer then resizer.Position = UDim2.new(1, -12, 1, -38) end
+        elseif layout == "left" then
+            tb.Position = UDim2.new(0, 0, 0, 0);   tb.Size = UDim2.new(0, w, 1, 0)
+            pc.Position = UDim2.new(0, w, 0, 0);   pc.Size = UDim2.new(1, -w, 1, 0)
+            tl.FillDirection     = Enum.FillDirection.Vertical
+            tl.VerticalAlignment = Enum.VerticalAlignment.Top
+            if resizer then resizer.Position = UDim2.new(1, -12, 1, -12) end
+        elseif layout == "right" then
+            tb.Position = UDim2.new(1, -w, 0, 0);  tb.Size = UDim2.new(0, w, 1, 0)
+            pc.Position = UDim2.new(0, 0, 0, 0);   pc.Size = UDim2.new(1, -w, 1, 0)
+            tl.FillDirection     = Enum.FillDirection.Vertical
+            tl.VerticalAlignment = Enum.VerticalAlignment.Top
+            if resizer then resizer.Position = UDim2.new(1, -(w + 12), 1, -12) end
+        end
+
+        -- ✅ FIXED: full-width centred label — matches _sizeTab
+        for _, t in ipairs(self._tabs or {}) do
+            local icon = hasIcon(t.Button)
+
+            t.TextLabel.TextXAlignment = Enum.TextXAlignment.Center
+            t.TextLabel.TextTruncate   = Enum.TextTruncate.AtEnd
+            t.TextLabel.Position       = UDim2.new(0, 0, 0, 0)
+            t.TextLabel.Size           = UDim2.new(1, 0, 1, 0)
+
+            if layout == "left" or layout == "right" then
+                t.Button.Size = UDim2.new(1, 0, 0, 28)
+            else
+                local ts = game:GetService("TextService"):GetTextSize(
+                    t.TextLabel.Text, 13, Enum.Font.RobotoMono, Vector2.new(999, 26))
+                local extra = icon and 56 or 24
+                t.Button.Size = UDim2.new(0, ts.X + extra, 1, 0)
+            end
+        end
+    end
+
+    function Axiom:SetTabLayout(layout) applyLayout(self, layout) end
+    function Axiom:_applyTabLayout(layout) applyLayout(self, layout) end
+
+    local origNew = Axiom.new
+    function Axiom.new(options)
+        options = options or {}
+        local win = origNew(options)
+        win._tabBarWidth   = options.TabBarWidth or 120
+        win._tabLayoutMode = options.Layout or "top"
+        if options.Layout and options.Layout ~= "top" then
+            applyLayout(win, options.Layout)
+        end
+        return win
+    end
+
+    local origAddTab = Axiom.AddTab
+    function Axiom:AddTab(options)
+        options = options or {}
+        if #(self._tabs or {}) == 0 and options.Layout and VALID[options.Layout]
+           and options.Layout ~= self._tabLayoutMode then
+            self._pendingLayout = options.Layout
+        end
+        local result = origAddTab(self, options)
+        if self._pendingLayout then
+            applyLayout(self, self._pendingLayout)
+            self._pendingLayout = nil
+        end
+        return result
+    end
+end
+
+return Axiom
