@@ -15,7 +15,7 @@ print([[
    YMM   ""`,m"       "Mm,MMM  "YMMMMMP" MMM  M'  "MMM
 ]])
 
---axiom v6.1 divisions.
+--axiom v6.1 divisions.AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
 
 local Axiom = {}
 Axiom.__index = Axiom
@@ -722,7 +722,7 @@ function Axiom:AddTab(options)
 end
 
 function TabComponent:_nextOrder(isDivision)
-    self._layoutOrder = self._layoutOrder + 1
+    self._layoutOrder += 1
     return self._layoutOrder
 end
 
@@ -860,143 +860,175 @@ end
 -- ════════════════════════════════════════════════════════════════════════════
 function TabComponent:AddDivision(options)
     options = options or {}
-    local theme     = getTheme(self)
-    local title     = options.Title or "Division"
-    local parentTab = self
 
-    -- Preset -> number of columns
-    local preset  = options.Preset or self._divisionPreset or "Split"
+    local theme = getTheme(self)
+    local title = options.Title or "Division"
+
+    local preset = options.Preset or self._divisionPreset or "Split"
+
     local columns = math.max(1, options.Columns or ({
-        Split  = 2,
-        Stack  = 1,
+        Split = 2,
+        Stack = 1,
         Triple = 3,
-        Quad   = 4,
+        Quad = 4,
     })[preset] or 2)
 
-    local COL_GAP = options.ColumnGap or 6   -- horizontal gap between columns
+    local explicitColumns = options.Preset ~= nil or options.Columns ~= nil
 
-    -- ── Create the masonry container ONCE per "block" ──────────────────
-    if not self._divisionContainer or self._divisionContainerColumns ~= columns then
+    if not explicitColumns and self._divisionContainerColumns then
+        columns = self._divisionContainerColumns
+    end
+
+    local COL_GAP = options.ColumnGap or 6
+
+    if not self._divisionContainer
+        or self._divisionContainerColumns ~= columns then
+
         local container = Instance.new("Frame")
+        container.Name = "DivisionContainer"
         container.BackgroundTransparency = 1
-        container.Size        = UDim2.new(1, 0, 0, 0)
+        container.Size = UDim2.new(1, 0, 0, 0)
         container.LayoutOrder = self:_nextOrder(true)
-        container.Parent      = self._page
+        container.Parent = self._page
 
         local hLayout = Instance.new("UIListLayout")
         hLayout.FillDirection = Enum.FillDirection.Horizontal
-        hLayout.SortOrder     = Enum.SortOrder.LayoutOrder
-        hLayout.Padding       = UDim.new(0, COL_GAP)
-        hLayout.Parent        = container
+        hLayout.SortOrder = Enum.SortOrder.LayoutOrder
+        hLayout.Padding = UDim.new(0, COL_GAP)
+        hLayout.Parent = container
 
         hLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
             container.Size = UDim2.new(1, 0, 0, hLayout.AbsoluteContentSize.Y)
         end)
 
         local colOffset = -((columns - 1) * COL_GAP) / columns
-        local colData   = {}
+        local colData = {}
 
         for i = 1, columns do
             local col = Instance.new("Frame")
+            col.Name = "DivisionColumn" .. i
             col.BackgroundTransparency = 1
-            col.Size        = UDim2.new(1 / columns, colOffset, 0, 0)
+            col.Size = UDim2.new(1 / columns, colOffset, 0, 0)
             col.LayoutOrder = i
-            col.Parent      = container
+            col.Parent = container
 
             local vLayout = Instance.new("UIListLayout")
             vLayout.SortOrder = Enum.SortOrder.LayoutOrder
-            vLayout.Padding   = UDim.new(0, 6)
-            vLayout.Parent    = col
+            vLayout.Padding = UDim.new(0, 6)
+            vLayout.Parent = col
 
             vLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
-                col.Size = UDim2.new(1 / columns, colOffset, 0, vLayout.AbsoluteContentSize.Y)
+                col.Size = UDim2.new(
+                    1 / columns,
+                    colOffset,
+                    0,
+                    vLayout.AbsoluteContentSize.Y
+                )
             end)
 
-            colData[i] = { Frame = col, Layout = vLayout }
+            colData[i] = {
+                Frame = col,
+                Layout = vLayout,
+            }
         end
 
-        self._divisionContainer        = container
+        self._divisionContainer = container
         self._divisionContainerColumns = columns
-        self._divisionColumns          = colData
+        self._divisionColumns = colData
     end
 
-    -- ── Pick the SHORTEST column (masonry packing) ─────────────────────
-local shortestCol = self._divisionColumns[1]
-local shortestHeight = math.huge
+    local shortestCol = nil
+    local shortestHeight = math.huge
 
-for i = 1, #self._divisionColumns do
-    local c = self._divisionColumns[i]
-    local h = c.Layout.AbsoluteContentSize.Y
+    for _, column in ipairs(self._divisionColumns) do
+        local height = 0
 
-    if h < shortestHeight then
-        shortestCol = c
-        shortestHeight = h
+        for _, child in ipairs(column.Frame:GetChildren()) do
+            if child:IsA("Frame") and child.Name == "DivisionFrame" then
+                height += child.Size.Y.Offset + 6
+            end
+        end
+
+        if height < shortestHeight then
+            shortestCol = column
+            shortestHeight = height
+        end
     end
-end
 
-    -- ── Build the division ─────────────────────────────────────────────
+    shortestCol = shortestCol or self._divisionColumns[1]
+
     local divisionFrame = Instance.new("Frame")
+    divisionFrame.Name = "DivisionFrame"
     divisionFrame.BackgroundColor3 = theme.FrameBg
-    divisionFrame.Size             = UDim2.new(1, 0, 0, 24)
+    divisionFrame.Size = UDim2.new(1, 0, 0, 24)
     divisionFrame.ClipsDescendants = true
-    divisionFrame.Parent           = shortestCol.Frame
+    divisionFrame.Parent = shortestCol.Frame
+
     applyCorner(divisionFrame, 2)
     applyBorder(divisionFrame, theme.Border)
 
     local titleBar = Instance.new("Frame")
     titleBar.BackgroundColor3 = theme.TitleBg
-    titleBar.Size             = UDim2.new(1, 0, 0, 22)
-    titleBar.Parent           = divisionFrame
+    titleBar.Size = UDim2.new(1, 0, 0, 22)
+    titleBar.Parent = divisionFrame
+
     applyCorner(titleBar, 2)
 
     local titleLabel = Instance.new("TextLabel")
     titleLabel.BackgroundTransparency = 1
-    titleLabel.Position       = UDim2.new(0, 6, 0, 0)
-    titleLabel.Size           = UDim2.new(1, -12, 1, 0)
-    titleLabel.Font           = Enum.Font.RobotoMono
-    titleLabel.Text           = title
-    titleLabel.TextColor3     = theme.Text
-    titleLabel.TextSize       = 12
+    titleLabel.Position = UDim2.new(0, 6, 0, 0)
+    titleLabel.Size = UDim2.new(1, -12, 1, 0)
+    titleLabel.Font = Enum.Font.RobotoMono
+    titleLabel.Text = title
+    titleLabel.TextColor3 = theme.Text
+    titleLabel.TextSize = 12
     titleLabel.TextXAlignment = Enum.TextXAlignment.Left
-    titleLabel.RichText       = true
-    titleLabel.Parent         = titleBar
+    titleLabel.RichText = true
+    titleLabel.Parent = titleBar
 
     local content = Instance.new("ScrollingFrame")
     content.BackgroundTransparency = 1
-    content.Position              = UDim2.new(0, 0, 0, 22)
-    content.Size                  = UDim2.new(1, 0, 0, 0)
-    content.ScrollBarThickness    = 4
-    content.ScrollBarImageColor3  = theme.Accent
-    content.CanvasSize            = UDim2.new(0, 0, 0, 0)
-    content.Parent                = divisionFrame
+    content.Position = UDim2.new(0, 0, 0, 22)
+    content.Size = UDim2.new(1, 0, 0, 0)
+    content.ScrollBarThickness = 4
+    content.ScrollBarImageColor3 = theme.Accent
+    content.CanvasSize = UDim2.new(0, 0, 0, 0)
+    content.Parent = divisionFrame
+
     applyPadding(content, 4)
 
     local contentLayout = Instance.new("UIListLayout")
     contentLayout.SortOrder = Enum.SortOrder.LayoutOrder
-    contentLayout.Padding   = UDim.new(0, 4)
-    contentLayout.Parent    = content
+    contentLayout.Padding = UDim.new(0, 4)
+    contentLayout.Parent = content
 
     local function updateSize()
-        local h = contentLayout.AbsoluteContentSize.Y + 8
-        content.CanvasSize = UDim2.new(0, 0, 0, h)
-        content.Size       = UDim2.new(1, 0, 0, h)
-        divisionFrame.Size = UDim2.new(1, 0, 0, 22 + h + 2)
+        local height = contentLayout.AbsoluteContentSize.Y + 8
+
+        content.CanvasSize = UDim2.new(0, 0, 0, height)
+        content.Size = UDim2.new(1, 0, 0, height)
+
+        divisionFrame.Size = UDim2.new(1, 0, 0, 24 + height)
     end
+
     contentLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(updateSize)
+
     task.defer(updateSize)
 
-    -- ── Division proxy (for AddButton etc. inside it) ──────────────────
     local dummyTab = {
-        _page        = content,
-        _window      = self._window,
+        _page = content,
+        _window = self._window,
         _layoutOrder = 0,
     }
+
     setmetatable(dummyTab, TabComponent)
 
     local division = {}
+
     setmetatable(division, {
         __index = function(_, methodName)
             local method = dummyTab[methodName]
+
             if type(method) == "function" then
                 return function(_, ...)
                     local result = method(dummyTab, ...)
@@ -1004,19 +1036,43 @@ end
                     return result
                 end
             end
+
             return method
-        end
+        end,
     })
 
-    function division:GetContainer() return divisionFrame end
-    function division:GetContent()   return content       end
-    function division:GetTitle()     return titleLabel.Text end
-    function division:SetTitle(t)    titleLabel.Text = tostring(t) end
-    function division:SetVisible(v)  divisionFrame.Visible = v     end
-    function division:IsVisible()    return divisionFrame.Visible  end
-    function division:Destroy()      divisionFrame:Destroy()       end
+    function division:GetContainer()
+        return divisionFrame
+    end
 
-    if self._window then self._window:_registerSearch(divisionFrame, title) end
+    function division:GetContent()
+        return content
+    end
+
+    function division:GetTitle()
+        return titleLabel.Text
+    end
+
+    function division:SetTitle(value)
+        titleLabel.Text = tostring(value)
+    end
+
+    function division:SetVisible(value)
+        divisionFrame.Visible = value
+    end
+
+    function division:IsVisible()
+        return divisionFrame.Visible
+    end
+
+    function division:Destroy()
+        divisionFrame:Destroy()
+    end
+
+    if self._window then
+        self._window:_registerSearch(divisionFrame, title)
+    end
+
     return division
 end
 
@@ -4655,7 +4711,7 @@ function Axiom:Notify(options)
     local message  = options.Description or ""
     local duration = options.Duration    or 3
 
-    local preset   = options.Type and _NOTIFY_PRESETS[options.Type]
+       = options.Type and _NOTIFY_PRESETS[options.Type]
     local position = options.Position  or self._notifyPosition  or "BottomRight"
     local maxStack = options.MaxStack  or self._notifyMaxStack  or 5
 
