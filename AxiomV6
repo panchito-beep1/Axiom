@@ -1,10 +1,10 @@
 --[[
-  :::.      .,::      .::::    ...     .        :.............
-  ;;`;;     `;;;,  .,;; ;;; .;;;;;;;.  ;;,.    ;;;.............
- ,[[ '[[,     '[[,,[['  [[[,[[     \[[,[[[[, ,[[[[,.............
-c$$$cc$$$c     Y$$$P    $$$$$$,     $$$$$$$$$$$"$$$..............
- 888   888,  oP"``"Yo,  888"888,_ _,88P888 Y88" 888o...............
- YMM   ""`,m"       "Mm,MMM  "YMMMMMP" MMM  M'  "MMM................
+  :::.      .,::      .::::    ...     .        :
+  ;;`;;     `;;;,  .,;; ;;; .;;;;;;;.  ;;,.    ;;;
+ ,[[ '[[,     '[[,,[['  [[[,[[     \[[,[[[[, ,[[[[,
+c$$$cc$$$c     Y$$$P    $$$$$$,     $$$$$$$$$$$"$$$
+ 888   888,  oP"``"Yo,  888"888,_ _,88P888 Y88" 888o
+ YMM   ""`,m"       "Mm,MMM  "YMMMMMP" MMM  M'  "MMM
 ]]
 print([[
     :::.      .,::      .::::    ...     .        :
@@ -15,7 +15,6 @@ print([[
    YMM   ""`,m"       "Mm,MMM  "YMMMMMP" MMM  M'  "MMM
 ]])
 
---axiom v6.1 divisions.AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
 local Axiom = {}
 Axiom.__index = Axiom
 
@@ -234,7 +233,6 @@ function Axiom.new(options)
     mainFrame.Size     = options.Size     or UDim2.new(0, 500, 0, 400)
     mainFrame.Parent = screen
 
-    -- Titlebar
     local titleBar = Instance.new("Frame")
     titleBar.Name = "TitleBar"
     titleBar.BackgroundColor3 = theme.TitleBg
@@ -287,7 +285,6 @@ function Axiom.new(options)
     closeBtn.TextSize = 16
     closeBtn.Parent = titleBar
 
-    -- Body
     local body = Instance.new("Frame")
     body.Name = "Body"
     body.BackgroundColor3 = theme.WindowBg
@@ -309,7 +306,6 @@ function Axiom.new(options)
         screen:Destroy()
     end)
 
-    -- Tab container
     local tabContainer = Instance.new("Frame")
     tabContainer.BackgroundColor3 = theme.TabBarBg
     tabContainer.Size = UDim2.new(1, 0, 0, 26)
@@ -321,14 +317,12 @@ function Axiom.new(options)
     tabLayout.SortOrder = Enum.SortOrder.LayoutOrder
     tabLayout.Parent = tabContainer
 
-    -- Page container
     local pageContainer = Instance.new("Frame")
     pageContainer.BackgroundTransparency = 1
     pageContainer.Position = UDim2.new(0, 0, 0, 26)
     pageContainer.Size = UDim2.new(1, 0, 1, -26)
     pageContainer.Parent = body
 
-    -- Resizer
     local resizer = Instance.new("TextButton")
     resizer.BackgroundTransparency = 1
     resizer.Size = UDim2.new(0, 12, 0, 12)
@@ -442,7 +436,6 @@ function Axiom:_applyTabLayout(layout)
     end
 end
 
--- ✅ FIXED: full-width label with centred text (works with or without icon)
 function Axiom:_sizeTab(tab)
     local mode = self._tabLayoutMode or "top"
 
@@ -567,10 +560,7 @@ function Axiom:SaveState()
         warn("[Axiom] SaveState: call win:EnableStateSaving({ Folder = ..., Filename = ... }) first")
         return
     end
-    if not writefile then
-        warn("[Axiom] SaveState: executor missing writefile")
-        return
-    end
+    if not writefile then return end
     local snapshot = {
         Position = {
             self._mainFrame.Position.X.Scale, self._mainFrame.Position.X.Offset,
@@ -592,14 +582,8 @@ function Axiom:SaveState()
 end
 
 function Axiom:LoadState()
-    if not self._stateFilePath then
-        warn("[Axiom] LoadState: call win:EnableStateSaving({ Folder = ..., Filename = ... }) first")
-        return
-    end
-    if not readfile or not isfile then
-        warn("[Axiom] LoadState: executor missing file I/O functions")
-        return
-    end
+    if not self._stateFilePath then return end
+    if not readfile or not isfile then return end
     local exists = false
     pcall(function() exists = isfile(self._stateFilePath) end)
     if not exists then return end
@@ -720,9 +704,12 @@ function Axiom:AddTab(options)
     return tabObj
 end
 
+-- ════════════════════════════════════════════════════════════════════════════
+--  TabComponent internals
+-- ════════════════════════════════════════════════════════════════════════════
 function TabComponent:_nextOrder(isDivision)
     if not isDivision then
-        self._divisionContainer = nil
+        self._activeDivisionState = nil
     end
     self._layoutOrder = self._layoutOrder + 1
     return self._layoutOrder
@@ -733,7 +720,7 @@ local function getTheme(tab)
 end
 
 -- ════════════════════════════════════════════════════════════════════════════
---  AddSubTab  ✅ FIXED
+--  AddSubTab
 -- ════════════════════════════════════════════════════════════════════════════
 function TabComponent:AddSubTab(options)
     options = options or {}
@@ -784,7 +771,6 @@ function TabComponent:AddSubTab(options)
     subText.Text = name
     subText.TextColor3 = theme.TabNormalText
     subText.TextSize = 12
-    -- ✅ FIXED: full-width centred label
     subText.TextXAlignment = Enum.TextXAlignment.Center
     subText.TextTruncate   = Enum.TextTruncate.AtEnd
     subText.Position       = UDim2.new(0, 0, 0, 0)
@@ -858,103 +844,119 @@ function TabComponent:AddSubTab(options)
 end
 
 -- ════════════════════════════════════════════════════════════════════════════
---  AddDivision
+--  DIVISIONS · dynamic masonry flow
 -- ════════════════════════════════════════════════════════════════════════════
+function TabComponent:_createDivisionContainer()
+    local container = Instance.new("Frame")
+    container.BackgroundTransparency = 1
+    container.Size = UDim2.new(1, 0, 0, 0)
+    container.LayoutOrder = self:_nextOrder(true)
+    container.Parent = self._page
+
+    local leftCol = Instance.new("Frame")
+    leftCol.Name = "LeftColumn"
+    leftCol.BackgroundTransparency = 1
+    leftCol.Position = UDim2.new(0, 0, 0, 0)
+    leftCol.Size = UDim2.new(0.5, -3, 0, 0)
+    leftCol.Parent = container
+
+    local leftLayout = Instance.new("UIListLayout")
+    leftLayout.SortOrder = Enum.SortOrder.LayoutOrder
+    leftLayout.Padding = UDim.new(0, 6)
+    leftLayout.Parent = leftCol
+
+    local rightCol = Instance.new("Frame")
+    rightCol.Name = "RightColumn"
+    rightCol.BackgroundTransparency = 1
+    rightCol.Position = UDim2.new(0.5, 3, 0, 0)
+    rightCol.Size = UDim2.new(0.5, -3, 0, 0)
+    rightCol.Parent = container
+
+    local rightLayout = Instance.new("UIListLayout")
+    rightLayout.SortOrder = Enum.SortOrder.LayoutOrder
+    rightLayout.Padding = UDim.new(0, 6)
+    rightLayout.Parent = rightCol
+
+    local state = {
+        Container   = container,
+        LeftCol     = leftCol,
+        RightCol    = rightCol,
+        LeftLayout  = leftLayout,
+        RightLayout = rightLayout,
+        Divisions   = {},
+        Relayouting = false,
+    }
+
+    local function refresh()
+        if state.Relayouting then return end
+        local lh = leftLayout.AbsoluteContentSize.Y
+        local rh = rightLayout.AbsoluteContentSize.Y
+        leftCol.Size  = UDim2.new(0.5, -3, 0, lh)
+        rightCol.Size = UDim2.new(0.5, -3, 0, rh)
+        container.Size = UDim2.new(1, 0, 0, math.max(lh, rh))
+    end
+    state.Refresh = refresh
+
+    leftLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(refresh)
+    rightLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(refresh)
+
+    return state
+end
+
+function TabComponent:_relayoutDivisions(state)
+    state = state or self._activeDivisionState
+    if not state or state.Relayouting then return end
+    state.Relayouting = true
+
+    for _, r in ipairs(state.Divisions) do
+        if r.Frame then r.Frame.Parent = nil end
+    end
+
+    local leftH, rightH = 0, 0
+    for i, r in ipairs(state.Divisions) do
+        if r.Frame then
+            local h = (r.Height or 24) + 6
+            if leftH <= rightH then
+                r.Frame.Parent      = state.LeftCol
+                r.Frame.LayoutOrder = i
+                leftH = leftH + h
+            else
+                r.Frame.Parent      = state.RightCol
+                r.Frame.LayoutOrder = i
+                rightH = rightH + h
+            end
+        end
+    end
+
+    state.Relayouting = false
+    state.Refresh()
+end
+
 function TabComponent:AddDivision(options)
     options = options or {}
-    local theme = getTheme(self)
-    local title = options.Title or "Division"
-    local preset = options.Preset or self._divisionPreset or "Split"
-    local columns = math.max(1, options.Columns or ({
-        Split  = 2,
-        Stack  = 1,
-        Triple = 3,
-        Quad   = 4,
-    })[preset] or 2)
-    local explicitColumns = options.Preset ~= nil or options.Columns ~= nil
-    if not explicitColumns and self._divisionContainerColumns then
-        columns = self._divisionContainerColumns
+    local theme      = getTheme(self)
+    local title      = options.Title or "Division"
+    local parentTab  = self
+
+    local state = self._activeDivisionState
+    if not state then
+        state = self:_createDivisionContainer()
+        self._activeDivisionState = state
     end
-    local COL_GAP = options.ColumnGap or 6
-    if not self._divisionContainer then
-        local container = Instance.new("Frame")
-        container.Name = "DivisionContainer"
-        container.BackgroundTransparency = 1
-        container.Size = UDim2.new(1, 0, 0, 0)
-        container.LayoutOrder = self:_nextOrder(true)
-        container.Parent = self._page
-        local hLayout = Instance.new("UIListLayout")
-        hLayout.FillDirection = Enum.FillDirection.Horizontal
-        hLayout.SortOrder = Enum.SortOrder.LayoutOrder
-        hLayout.Padding = UDim.new(0, COL_GAP)
-        hLayout.Parent = container
-        hLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
-            container.Size = UDim2.new(1, 0, 0, hLayout.AbsoluteContentSize.Y)
-        end)
-        local colOffset = -((columns - 1) * COL_GAP) / columns
-        local colData = {}
-        for i = 1, columns do
-            local col = Instance.new("Frame")
-            col.Name = "DivisionColumn" .. i
-            col.BackgroundTransparency = 1
-            col.Size = UDim2.new(1 / columns, colOffset, 0, 0)
-            col.LayoutOrder = i
-            col.Parent = container
-            local vLayout = Instance.new("UIListLayout")
-            vLayout.SortOrder = Enum.SortOrder.LayoutOrder
-            vLayout.Padding = UDim.new(0, 6)
-            vLayout.Parent = col
-            vLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
-                col.Size = UDim2.new(
-                    1 / columns,
-                    colOffset,
-                    0,
-                    vLayout.AbsoluteContentSize.Y
-                )
-            end)
-            colData[i] = {
-                Frame  = col,
-                Layout = vLayout,
-                -- FIX: logical column height tracked in Lua so that
-                -- shortest-column selection is accurate synchronously,
-                -- before Roblox computes any AbsoluteContentSize values.
-                Height = 0,
-            }
-        end
-        self._divisionContainer        = container
-        self._divisionContainerColumns = columns
-        self._divisionColumns          = colData
-    end
-    -- FIX: read column.Height (Lua-tracked) instead of iterating Instance
-    -- children and reading Size.Y.Offset, which is always the initial value
-    -- (24) for frames whose task.defer'd updateSize has not yet run.
-    local shortestCol    = self._divisionColumns[1]
-    local shortestHeight = shortestCol.Height
-    for i = 2, #self._divisionColumns do
-        local column = self._divisionColumns[i]
-        if column.Height < shortestHeight then
-            shortestCol    = column
-            shortestHeight = column.Height
-        end
-    end
+
     local divisionFrame = Instance.new("Frame")
-    divisionFrame.Name = "DivisionFrame"
     divisionFrame.BackgroundColor3 = theme.FrameBg
     divisionFrame.Size = UDim2.new(1, 0, 0, 24)
     divisionFrame.ClipsDescendants = true
-    divisionFrame.Parent = shortestCol.Frame
     applyCorner(divisionFrame, 2)
     applyBorder(divisionFrame, theme.Border)
-    -- FIX: update the tracked height now, synchronously.  The column's
-    -- UIListLayout inserts 6 px of padding between items, so only add it
-    -- when the column already contains at least one division.
-    local colGap = (shortestCol.Height > 0) and 6 or 0
-    shortestCol.Height = shortestCol.Height + 24 + colGap  -- 24 = initial frame height
+
     local titleBar = Instance.new("Frame")
     titleBar.BackgroundColor3 = theme.TitleBg
     titleBar.Size = UDim2.new(1, 0, 0, 22)
     titleBar.Parent = divisionFrame
     applyCorner(titleBar, 2)
+
     local titleLabel = Instance.new("TextLabel")
     titleLabel.BackgroundTransparency = 1
     titleLabel.Position = UDim2.new(0, 6, 0, 0)
@@ -966,6 +968,7 @@ function TabComponent:AddDivision(options)
     titleLabel.TextXAlignment = Enum.TextXAlignment.Left
     titleLabel.RichText = true
     titleLabel.Parent = titleBar
+
     local content = Instance.new("ScrollingFrame")
     content.BackgroundTransparency = 1
     content.Position = UDim2.new(0, 0, 0, 22)
@@ -975,60 +978,85 @@ function TabComponent:AddDivision(options)
     content.CanvasSize = UDim2.new(0, 0, 0, 0)
     content.Parent = divisionFrame
     applyPadding(content, 4)
+
     local contentLayout = Instance.new("UIListLayout")
     contentLayout.SortOrder = Enum.SortOrder.LayoutOrder
     contentLayout.Padding = UDim.new(0, 4)
     contentLayout.Parent = content
-    -- FIX: track the last scripted frame height so updateSize can apply a
-    -- delta to shortestCol.Height rather than recomputing from scratch.
-    -- This keeps the Lua-tracked height accurate as the frame grows over time.
-    local trackedFrameHeight = 24  -- matches divisionFrame's initial Size.Y.Offset
-    local function updateSize()
+
+    local record = { Frame = divisionFrame, Content = content, Height = 24 }
+    table.insert(state.Divisions, record)
+
+    local function updateHeight()
         local contentH = contentLayout.AbsoluteContentSize.Y + 8
-        local newFH    = 24 + contentH
-        local delta    = newFH - trackedFrameHeight
-        trackedFrameHeight = newFH
-        -- Keep the column's Lua-tracked height in sync.
-        shortestCol.Height = shortestCol.Height + delta
         content.CanvasSize = UDim2.new(0, 0, 0, contentH)
-        content.Size       = UDim2.new(1, 0, 0, contentH)
-        divisionFrame.Size = UDim2.new(1, 0, 0, newFH)
+        content.Size = UDim2.new(1, 0, 0, contentH)
+        local newH = 22 + contentH + 2
+        divisionFrame.Size = UDim2.new(1, 0, 0, newH)
+        record.Height = newH
     end
-    contentLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(updateSize)
-    task.defer(updateSize)
+    contentLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(updateHeight)
+    task.defer(updateHeight)
+
     local dummyTab = {
         _page        = content,
         _window      = self._window,
         _layoutOrder = 0,
     }
     setmetatable(dummyTab, TabComponent)
-    local division = {}
+
+    local division = { Frame = divisionFrame, Content = content, Record = record }
     setmetatable(division, {
         __index = function(_, methodName)
             local method = dummyTab[methodName]
             if type(method) == "function" then
                 return function(_, ...)
                     local result = method(dummyTab, ...)
-                    updateSize()
+                    updateHeight()
                     return result
                 end
             end
             return method
-        end,
+        end
     })
+
     function division:GetContainer() return divisionFrame end
     function division:GetContent()   return content end
     function division:GetTitle()     return titleLabel.Text end
-    function division:SetTitle(v)    titleLabel.Text = tostring(v) end
+    function division:SetTitle(t)    titleLabel.Text = tostring(t) end
     function division:SetVisible(v)  divisionFrame.Visible = v end
     function division:IsVisible()    return divisionFrame.Visible end
-    function division:Destroy()      divisionFrame:Destroy() end
-    if self._window then
-        self._window:_registerSearch(divisionFrame, title)
+    function division:Destroy()
+        for i, r in ipairs(state.Divisions) do
+            if r == record then
+                table.remove(state.Divisions, i)
+                break
+            end
+        end
+
+        divisionFrame:Destroy()
+        parentTab:_relayoutDivisions(state)
+
+        if #state.Divisions == 0 then
+            if parentTab._activeDivisionState == state then
+                parentTab._activeDivisionState = nil
+            end
+            state.Container:Destroy()
+        end
     end
+
+    parentTab:_relayoutDivisions(state)
+
+    -- Rebalance after initial content settles (so newly-added items are measured)
+    task.delay(0.1, function()
+        if state and not state.Relayouting and state.Container and state.Container.Parent then
+            parentTab:_relayoutDivisions(state)
+        end
+    end)
+
+    if self._window then self._window:_registerSearch(divisionFrame, title) end
     return division
 end
-
 
 -- ════════════════════════════════════════════════════════════════════════════
 --  AddButton
@@ -2299,7 +2327,7 @@ function TabComponent:AddColorPicker(options)
 end
 
 -- ════════════════════════════════════════════════════════════════════════════
---  AddLabel
+--  AddLabel / AddSection / AddSeparator
 -- ════════════════════════════════════════════════════════════════════════════
 function TabComponent:AddLabel(options)
     options = options or {}
@@ -2336,9 +2364,6 @@ function TabComponent:AddLabel(options)
     return obj
 end
 
--- ════════════════════════════════════════════════════════════════════════════
---  AddSection / AddSeparator
--- ════════════════════════════════════════════════════════════════════════════
 function TabComponent:AddSection(options)
     options = options or {}
     local text = options.Text or ""
@@ -4665,7 +4690,7 @@ function Axiom:Notify(options)
     local message  = options.Description or ""
     local duration = options.Duration    or 3
 
-       = options.Type and _NOTIFY_PRESETS[options.Type]
+    local preset   = options.Type and _NOTIFY_PRESETS[options.Type]
     local position = options.Position  or self._notifyPosition  or "BottomRight"
     local maxStack = options.MaxStack  or self._notifyMaxStack  or 5
 
@@ -4831,13 +4856,8 @@ function Axiom:DismissAllNotifications()
     self._notifyStack = {}
 end
 
-function Axiom:SetNotifyPosition(pos)
-    self._notifyPosition = pos
-end
-
-function Axiom:SetNotifyMaxStack(n)
-    self._notifyMaxStack = n
-end
+function Axiom:SetNotifyPosition(pos) self._notifyPosition = pos end
+function Axiom:SetNotifyMaxStack(n) self._notifyMaxStack = n end
 
 -- ════════════════════════════════════════════════════════════════════════════
 --  Dialog / Loading
@@ -5120,19 +5140,10 @@ function Axiom:Destroy()
 end
 
 -- ═══════════════════════════════════════════════════════════════════════════
---  Vanilla tab-layout support
+--  Vanilla tab-layout support (wraps Axiom.new / AddTab for one-shot Layout option)
 -- ═══════════════════════════════════════════════════════════════════════════
 do
     local VALID = { top = true, bottom = true, left = true, right = true }
-
-    local function findResizer(container)
-        local body = container.Parent
-        if not body then return nil end
-        for _, c in ipairs(body:GetChildren()) do
-            if c:IsA("TextButton") and c.Text == "◢" then return c end
-        end
-        return nil
-    end
 
     local function hasIcon(tabBtn)
         return tabBtn:FindFirstChildWhichIsA("ImageLabel", true) ~= nil
@@ -5148,20 +5159,18 @@ do
 
         local tb = self._tabContainer
         local pc = self._pageContainer
-        if not (tb and pc) then
-            warn("[Axiom] applyLayout: self is not a window")
-            return
-        end
+        if not (tb and pc) then return end
 
-        local tl = tb:FindFirstChildOfClass("UIListLayout")
+        local tl = self._tabListLayout
         if not tl then
             tl = Instance.new("UIListLayout")
             tl.SortOrder = Enum.SortOrder.LayoutOrder
             tl.Parent = tb
+            self._tabListLayout = tl
         end
 
-        local resizer = findResizer(tb)
         local w = self._tabBarWidth or 120
+        local resizer = self._resizer
 
         if layout == "top" then
             tb.Position = UDim2.new(0, 0, 0, 0);   tb.Size = UDim2.new(1, 0, 0, 26)
@@ -5189,10 +5198,8 @@ do
             if resizer then resizer.Position = UDim2.new(1, -(w + 12), 1, -12) end
         end
 
-        -- ✅ FIXED: full-width centred label — matches _sizeTab
         for _, t in ipairs(self._tabs or {}) do
             local icon = hasIcon(t.Button)
-
             t.TextLabel.TextXAlignment = Enum.TextXAlignment.Center
             t.TextLabel.TextTruncate   = Enum.TextTruncate.AtEnd
             t.TextLabel.Position       = UDim2.new(0, 0, 0, 0)
@@ -5239,55 +5246,5 @@ do
         return result
     end
 end
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 return Axiom
