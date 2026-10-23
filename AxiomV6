@@ -15,6 +15,8 @@ print([[
    YMM   ""`,m"       "Mm,MMM  "YMMMMMP" MMM  M'  "MMM
 ]])
 
+local b = "bul"
+
 local Axiom = {}
 Axiom.__index = Axiom
 
@@ -844,7 +846,13 @@ function TabComponent:AddSubTab(options)
 end
 
 -- ════════════════════════════════════════════════════════════════════════════
---  DIVISIONS · dynamic masonry flow
+--  DIVISIONS · dynamic masonry flow (shortest-column-first, always rebalanced)
+--
+--  • Every division is placed in whichever column is CURRENTLY SHORTEST.
+--  • Whenever a division's content changes height, a debounced rebalance
+--    re-runs the placement so divisions flow into the gaps properly.
+--  • Removing a division also triggers a rebalance — the following divisions
+--    slide up to fill the gap.
 -- ════════════════════════════════════════════════════════════════════════════
 function TabComponent:_createDivisionContainer()
     local container = Instance.new("Frame")
@@ -878,13 +886,14 @@ function TabComponent:_createDivisionContainer()
     rightLayout.Parent = rightCol
 
     local state = {
-        Container   = container,
-        LeftCol     = leftCol,
-        RightCol    = rightCol,
-        LeftLayout  = leftLayout,
-        RightLayout = rightLayout,
-        Divisions   = {},
-        Relayouting = false,
+        Container       = container,
+        LeftCol         = leftCol,
+        RightCol        = rightCol,
+        LeftLayout      = leftLayout,
+        RightLayout     = rightLayout,
+        Divisions       = {},
+        Relayouting     = false,
+        PendingRelayout = false,
     }
 
     local function refresh()
@@ -903,27 +912,44 @@ function TabComponent:_createDivisionContainer()
     return state
 end
 
+function TabComponent:_scheduleDivisionRelayout(state)
+    if not state or state.PendingRelayout then return end
+    state.PendingRelayout = true
+    task.delay(0.15, function()
+        state.PendingRelayout = false
+        if state.Container and state.Container.Parent and not state.Relayouting then
+            self:_relayoutDivisions(state)
+        end
+    end)
+end
+
 function TabComponent:_relayoutDivisions(state)
     state = state or self._activeDivisionState
     if not state or state.Relayouting then return end
     state.Relayouting = true
 
+    -- Detach all divisions for a clean slate
     for _, r in ipairs(state.Divisions) do
         if r.Frame then r.Frame.Parent = nil end
     end
 
+    -- Greedy shortest-column-first placement.
+    -- Use Frame.Size.Y.Offset (fresh, set by updateHeight) — fall back to record.
+    local GAP = 6
     local leftH, rightH = 0, 0
     for i, r in ipairs(state.Divisions) do
         if r.Frame then
-            local h = (r.Height or 24) + 6
+            local h = r.Frame.Size.Y.Offset
+            if not h or h <= 0 then h = r.Height or 32 end
+
             if leftH <= rightH then
                 r.Frame.Parent      = state.LeftCol
                 r.Frame.LayoutOrder = i
-                leftH = leftH + h
+                leftH = leftH + h + GAP
             else
                 r.Frame.Parent      = state.RightCol
                 r.Frame.LayoutOrder = i
-                rightH = rightH + h
+                rightH = rightH + h + GAP
             end
         end
     end
@@ -994,7 +1020,13 @@ function TabComponent:AddDivision(options)
         local newH = 22 + contentH + 2
         divisionFrame.Size = UDim2.new(1, 0, 0, newH)
         record.Height = newH
+
+        -- Debounced rebalance: when this division's height changes,
+        -- the columns get re-flowed (shortest-column-first) so it always
+        -- lands in the right place — even if content is added later.
+        parentTab:_scheduleDivisionRelayout(state)
     end
+
     contentLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(updateHeight)
     task.defer(updateHeight)
 
@@ -1026,6 +1058,7 @@ function TabComponent:AddDivision(options)
     function division:SetTitle(t)    titleLabel.Text = tostring(t) end
     function division:SetVisible(v)  divisionFrame.Visible = v end
     function division:IsVisible()    return divisionFrame.Visible end
+    function division:Relayout()     parentTab:_relayoutDivisions(state) end
     function division:Destroy()
         for i, r in ipairs(state.Divisions) do
             if r == record then
@@ -1046,13 +1079,6 @@ function TabComponent:AddDivision(options)
     end
 
     parentTab:_relayoutDivisions(state)
-
-    -- Rebalance after initial content settles (so newly-added items are measured)
-    task.delay(0.1, function()
-        if state and not state.Relayouting and state.Container and state.Container.Parent then
-            parentTab:_relayoutDivisions(state)
-        end
-    end)
 
     if self._window then self._window:_registerSearch(divisionFrame, title) end
     return division
@@ -4665,13 +4691,8 @@ function Axiom:CreateKeySystem(config)
     return keySys
 end
 
-function Axiom:IsPremium()
-    return self._isPremium == true
-end
-
-function Axiom:GetTier()
-    return self._tier or "Free"
-end
+function Axiom:IsPremium() return self._isPremium == true end
+function Axiom:GetTier()   return self._tier or "Free" end
 
 -- ════════════════════════════════════════════════════════════════════════════
 --  Notifications
@@ -5047,17 +5068,14 @@ function Axiom:SetTheme(newTheme)
         if instance:IsA("GuiObject") then
             local key = oldMap[instance.BackgroundColor3]
             if key and merged[key] then instance.BackgroundColor3 = merged[key] end
-
             if instance:IsA("TextLabel") or instance:IsA("TextButton") or instance:IsA("TextBox") then
                 local txtKey = oldMap[instance.TextColor3]
                 if txtKey and merged[txtKey] then instance.TextColor3 = merged[txtKey] end
             end
-
             if instance:IsA("TextBox") then
                 local phKey = oldMap[instance.PlaceholderColor3]
                 if phKey and merged[phKey] then instance.PlaceholderColor3 = merged[phKey] end
             end
-
             local stroke = instance:FindFirstChildOfClass("UIStroke")
             if stroke then
                 local strokeKey = oldMap[stroke.Color]
@@ -5140,7 +5158,7 @@ function Axiom:Destroy()
 end
 
 -- ═══════════════════════════════════════════════════════════════════════════
---  Vanilla tab-layout support (wraps Axiom.new / AddTab for one-shot Layout option)
+--  Vanilla tab-layout support
 -- ═══════════════════════════════════════════════════════════════════════════
 do
     local VALID = { top = true, bottom = true, left = true, right = true }
