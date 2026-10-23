@@ -15,8 +15,7 @@ print([[
    YMM   ""`,m"       "Mm,MMM  "YMMMMMP" MMM  M'  "MMM
 ]])
 
---axiom v6.1 divisions.AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
-
+--axiom v6.1 divisions.A
 local Axiom = {}
 Axiom.__index = Axiom
 
@@ -722,7 +721,7 @@ function Axiom:AddTab(options)
 end
 
 function TabComponent:_nextOrder(isDivision)
-    self._layoutOrder += 1
+    self._layoutOrder = self._layoutOrder + 1
     return self._layoutOrder
 end
 
@@ -881,8 +880,7 @@ function TabComponent:AddDivision(options)
 
     local COL_GAP = options.ColumnGap or 6
 
-    if not self._divisionContainer
-        or self._divisionContainerColumns ~= columns then
+    if not self._divisionContainer then
 
         local container = Instance.new("Frame")
         container.Name = "DivisionContainer"
