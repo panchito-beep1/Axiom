@@ -16,7 +16,7 @@ print([[
    YMM   ""`,m"       "Mm,MMM  "YMMMMMP" MMM  M'  "MMM
 ]])
 
--- tab revamp + divison and no size limits
+-- fixed some issues with the new tabs 
 
 
 local Axiom = {}
@@ -5179,5 +5179,136 @@ function Axiom:Destroy()
     if tooltipGui then tooltipGui:Destroy(); tooltipGui = nil end
     self._screen:Destroy()
 end
+
+-- ═══════════════════════════════════════════════════════════════════════════
+--  Vanilla tab-layout support (built into the source — no external patch)
+-- ═══════════════════════════════════════════════════════════════════════════
+do
+    local VALID = { top = true, bottom = true, left = true, right = true }
+
+    local function findResizer(container)
+        local body = container.Parent
+        if not body then return nil end
+        for _, c in ipairs(body:GetChildren()) do
+            if c:IsA("TextButton") and c.Text == "◢" then return c end
+        end
+        return nil
+    end
+
+    local function hasIcon(tabBtn)
+        return tabBtn:FindFirstChildWhichIsA("ImageLabel", true) ~= nil
+    end
+
+    local function applyLayout(self, layout)
+        layout = layout or "top"
+        if not VALID[layout] then
+            warn("[Axiom] invalid layout '" .. tostring(layout) .. "', using 'top'")
+            layout = "top"
+        end
+        self._tabLayoutMode = layout
+
+        local tb = self._tabContainer
+        local pc = self._pageContainer
+        if not (tb and pc) then
+            warn("[Axiom] applyLayout: self is not a window")
+            return
+        end
+
+        local tl = tb:FindFirstChildOfClass("UIListLayout")
+        if not tl then
+            tl = Instance.new("UIListLayout")
+            tl.SortOrder = Enum.SortOrder.LayoutOrder
+            tl.Parent = tb
+        end
+
+        local resizer = findResizer(tb)
+        local w = self._tabBarWidth or 120
+
+        if layout == "top" then
+            tb.Position = UDim2.new(0, 0, 0, 0);   tb.Size = UDim2.new(1, 0, 0, 26)
+            pc.Position = UDim2.new(0, 0, 0, 26);  pc.Size = UDim2.new(1, 0, 1, -26)
+            tl.FillDirection     = Enum.FillDirection.Horizontal
+            tl.VerticalAlignment = Enum.VerticalAlignment.Center
+            if resizer then resizer.Position = UDim2.new(1, -12, 1, -12) end
+        elseif layout == "bottom" then
+            tb.Position = UDim2.new(0, 0, 1, -26); tb.Size = UDim2.new(1, 0, 0, 26)
+            pc.Position = UDim2.new(0, 0, 0, 0);   pc.Size = UDim2.new(1, 0, 1, -26)
+            tl.FillDirection     = Enum.FillDirection.Horizontal
+            tl.VerticalAlignment = Enum.VerticalAlignment.Center
+            if resizer then resizer.Position = UDim2.new(1, -12, 1, -38) end
+        elseif layout == "left" then
+            tb.Position = UDim2.new(0, 0, 0, 0);   tb.Size = UDim2.new(0, w, 1, 0)
+            pc.Position = UDim2.new(0, w, 0, 0);   pc.Size = UDim2.new(1, -w, 1, 0)
+            tl.FillDirection     = Enum.FillDirection.Vertical
+            tl.VerticalAlignment = Enum.VerticalAlignment.Top
+            if resizer then resizer.Position = UDim2.new(1, -12, 1, -12) end
+        elseif layout == "right" then
+            tb.Position = UDim2.new(1, -w, 0, 0);  tb.Size = UDim2.new(0, w, 1, 0)
+            pc.Position = UDim2.new(0, 0, 0, 0);   pc.Size = UDim2.new(1, -w, 1, 0)
+            tl.FillDirection     = Enum.FillDirection.Vertical
+            tl.VerticalAlignment = Enum.VerticalAlignment.Top
+            if resizer then resizer.Position = UDim2.new(1, -(w + 12), 1, -12) end
+        end
+
+        for _, t in ipairs(self._tabs or {}) do
+            local icon = hasIcon(t.Button)
+            if layout == "left" or layout == "right" then
+                t.Button.Size = UDim2.new(1, 0, 0, 28)
+                if icon then
+                    t.TextLabel.Position = UDim2.new(0, 26, 0, 0)
+                    t.TextLabel.Size     = UDim2.new(1, -30, 1, 0)
+                else
+                    t.TextLabel.Position = UDim2.new(0, 8, 0, 0)
+                    t.TextLabel.Size     = UDim2.new(1, -16, 1, 0)
+                end
+            else
+                local ts = game:GetService("TextService"):GetTextSize(
+                    t.TextLabel.Text, 13, Enum.Font.RobotoMono, Vector2.new(999, 26))
+                t.Button.Size = UDim2.new(0, ts.X + 16 + (icon and 24 or 0), 1, 0)
+                if icon then
+                    t.TextLabel.Position = UDim2.new(0, 26, 0, 0)
+                    t.TextLabel.Size     = UDim2.new(1, -26, 1, 0)
+                else
+                    t.TextLabel.Position = UDim2.new(0, 8, 0, 0)
+                    t.TextLabel.Size     = UDim2.new(1, -16, 1, 0)
+                end
+            end
+        end
+    end
+
+    -- Attach the methods to the class (instances inherit via __index = Axiom)
+    function Axiom:SetTabLayout(layout) applyLayout(self, layout) end
+    function Axiom:_applyTabLayout(layout) applyLayout(self, layout) end
+
+    -- Wrap Axiom.new so { Layout = ..., TabBarWidth = ... } works
+    local origNew = Axiom.new
+    function Axiom.new(options)
+        options = options or {}
+        local win = origNew(options)
+        win._tabBarWidth   = options.TabBarWidth or 120
+        win._tabLayoutMode = options.Layout or "top"
+        if options.Layout and options.Layout ~= "top" then
+            applyLayout(win, options.Layout)
+        end
+        return win
+    end
+
+    -- Wrap AddTab so the first-tab Layout option works
+    local origAddTab = Axiom.AddTab
+    function Axiom:AddTab(options)
+        options = options or {}
+        if #(self._tabs or {}) == 0 and options.Layout and VALID[options.Layout]
+           and options.Layout ~= self._tabLayoutMode then
+            self._pendingLayout = options.Layout
+        end
+        local result = origAddTab(self, options)
+        if self._pendingLayout then
+            applyLayout(self, self._pendingLayout)
+            self._pendingLayout = nil
+        end
+        return result
+    end
+end
+-- ═══════════════════════════════════════════════════════════════════════════
 
 return Axiom
