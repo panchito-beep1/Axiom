@@ -15,7 +15,7 @@ print([[
    YMM   ""`,m"       "Mm,MMM  "YMMMMMP" MMM  M'  "MMM
 ]])
 
---axiom v6.1 Division bug fixes AGAIN
+--axiom v6.1 Divisions are so broken.....................
 
 local Axiom = {}
 Axiom.__index = Axiom
@@ -924,16 +924,18 @@ function TabComponent:AddDivision(options)
     end
 
     -- ── Pick the SHORTEST column (masonry packing) ─────────────────────
-    local shortestCol    = self._divisionColumns[1]
-    local shortestHeight = shortestCol.Layout.AbsoluteContentSize.Y
-    for i = 2, #self._divisionColumns do
-        local c = self._divisionColumns[i]
-        local h = c.Layout.AbsoluteContentSize.Y
-        if h < shortestHeight then
-            shortestCol    = c
-            shortestHeight = h
-        end
+local shortestCol = self._divisionColumns[1]
+local shortestHeight = math.huge
+
+for i = 1, #self._divisionColumns do
+    local c = self._divisionColumns[i]
+    local h = c.Layout.AbsoluteContentSize.Y
+
+    if h < shortestHeight then
+        shortestCol = c
+        shortestHeight = h
     end
+end
 
     -- ── Build the division ─────────────────────────────────────────────
     local divisionFrame = Instance.new("Frame")
