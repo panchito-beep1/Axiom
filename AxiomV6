@@ -1,10 +1,10 @@
 --[[
-  :::.      .,::      .::::    ...     .        :
-  ;;`;;     `;;;,  .,;; ;;; .;;;;;;;.  ;;,.    ;;;
- ,[[ '[[,     '[[,,[['  [[[,[[     \[[,[[[[, ,[[[[,
-c$$$cc$$$c     Y$$$P    $$$$$$,     $$$$$$$$$$$"$$$
- 888   888,  oP"``"Yo,  888"888,_ _,88P888 Y88" 888o
- YMM   ""`,m"       "Mm,MMM  "YMMMMMP" MMM  M'  "MMM
+  :::.      .,::      .::::    ...     .        :.............
+  ;;`;;     `;;;,  .,;; ;;; .;;;;;;;.  ;;,.    ;;;.............
+ ,[[ '[[,     '[[,,[['  [[[,[[     \[[,[[[[, ,[[[[,.............
+c$$$cc$$$c     Y$$$P    $$$$$$,     $$$$$$$$$$$"$$$..............
+ 888   888,  oP"``"Yo,  888"888,_ _,88P888 Y88" 888o...............
+ YMM   ""`,m"       "Mm,MMM  "YMMMMMP" MMM  M'  "MMM................
 ]]
 print([[
     :::.      .,::      .::::    ...     .        :
@@ -15,7 +15,7 @@ print([[
    YMM   ""`,m"       "Mm,MMM  "YMMMMMP" MMM  M'  "MMM
 ]])
 
---axiom v6.1 Divisions are so broken.....................
+--axiom v6.1 divisions.
 
 local Axiom = {}
 Axiom.__index = Axiom
@@ -722,9 +722,6 @@ function Axiom:AddTab(options)
 end
 
 function TabComponent:_nextOrder(isDivision)
-    if not isDivision then
-        self._divisionContainer = nil
-    end
     self._layoutOrder = self._layoutOrder + 1
     return self._layoutOrder
 end
@@ -5232,5 +5229,55 @@ do
         return result
     end
 end
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 return Axiom
