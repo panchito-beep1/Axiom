@@ -846,13 +846,7 @@ function TabComponent:AddSubTab(options)
 end
 
 -- ════════════════════════════════════════════════════════════════════════════
---  DIVISIONS · dynamic masonry flow (shortest-column-first, always rebalanced)
---
---  • Every division is placed in whichever column is CURRENTLY SHORTEST.
---  • Whenever a division's content changes height, a debounced rebalance
---    re-runs the placement so divisions flow into the gaps properly.
---  • Removing a division also triggers a rebalance — the following divisions
---    slide up to fill the gap.
+--  DIVISIONS 
 -- ════════════════════════════════════════════════════════════════════════════
 function TabComponent:_createDivisionContainer()
     local container = Instance.new("Frame")
@@ -886,14 +880,15 @@ function TabComponent:_createDivisionContainer()
     rightLayout.Parent = rightCol
 
     local state = {
-        Container       = container,
-        LeftCol         = leftCol,
-        RightCol        = rightCol,
-        LeftLayout      = leftLayout,
-        RightLayout     = rightLayout,
-        Divisions       = {},
-        Relayouting     = false,
-        PendingRelayout = false,
+        Container     = container,
+        LeftCol       = leftCol,
+        RightCol      = rightCol,
+        LeftLayout    = leftLayout,
+        RightLayout   = rightLayout,
+        Divisions     = {},
+        Relayouting   = false,
+        NeedsRelayout = false,
+        HeartbeatConn = nil,
     }
 
     local function refresh()
@@ -912,45 +907,32 @@ function TabComponent:_createDivisionContainer()
     return state
 end
 
-function TabComponent:_scheduleDivisionRelayout(state)
-    if not state or state.PendingRelayout then return end
-    state.PendingRelayout = true
-    task.delay(0.15, function()
-        state.PendingRelayout = false
-        if state.Container and state.Container.Parent and not state.Relayouting then
-            self:_relayoutDivisions(state)
-        end
-    end)
-end
-
-function TabComponent:_relayoutDivisions(state)
-    state = state or self._activeDivisionState
-    if not state or state.Relayouting then return end
+function TabComponent:_doRelayout(state)
+    if not state or not state.Container or not state.Container.Parent then return end
+    if state.Relayouting then return end
     state.Relayouting = true
 
-    -- Detach all divisions for a clean slate
-    for _, r in ipairs(state.Divisions) do
-        if r.Frame then r.Frame.Parent = nil end
-    end
-
-    -- Greedy shortest-column-first placement.
-    -- Use Frame.Size.Y.Offset (fresh, set by updateHeight) — fall back to record.
     local GAP = 6
     local leftH, rightH = 0, 0
-    for i, r in ipairs(state.Divisions) do
-        if r.Frame then
-            local h = r.Frame.Size.Y.Offset
-            if not h or h <= 0 then h = r.Height or 32 end
 
+    for i, r in ipairs(state.Divisions) do
+        if r.Frame and r.Frame.Parent ~= nil then
+            local h = r.Frame.Size.Y.Offset
+            if h <= 0 then h = r.Height or 32 end
+
+            local target
             if leftH <= rightH then
-                r.Frame.Parent      = state.LeftCol
-                r.Frame.LayoutOrder = i
+                target = state.LeftCol
                 leftH = leftH + h + GAP
             else
-                r.Frame.Parent      = state.RightCol
-                r.Frame.LayoutOrder = i
+                target = state.RightCol
                 rightH = rightH + h + GAP
             end
+
+            if r.Frame.Parent ~= target then
+                r.Frame.Parent = target
+            end
+            r.Frame.LayoutOrder = i
         end
     end
 
@@ -960,14 +942,28 @@ end
 
 function TabComponent:AddDivision(options)
     options = options or {}
-    local theme      = getTheme(self)
-    local title      = options.Title or "Division"
-    local parentTab  = self
+    local theme     = getTheme(self)
+    local title     = options.Title or "Division"
+    local parentTab = self
 
     local state = self._activeDivisionState
     if not state then
         state = self:_createDivisionContainer()
         self._activeDivisionState = state
+
+        state.HeartbeatConn = RunService.Heartbeat:Connect(function()
+            if not (state.Container and state.Container.Parent) then
+                if state.HeartbeatConn then
+                    pcall(function() state.HeartbeatConn:Disconnect() end)
+                    state.HeartbeatConn = nil
+                end
+                return
+            end
+            if state.NeedsRelayout then
+                state.NeedsRelayout = false
+                parentTab:_doRelayout(state)
+            end
+        end)
     end
 
     local divisionFrame = Instance.new("Frame")
@@ -1010,7 +1006,7 @@ function TabComponent:AddDivision(options)
     contentLayout.Padding = UDim.new(0, 4)
     contentLayout.Parent = content
 
-    local record = { Frame = divisionFrame, Content = content, Height = 24 }
+    local record = {Frame = divisionFrame, Content = content, Height = 24}
     table.insert(state.Divisions, record)
 
     local function updateHeight()
@@ -1020,24 +1016,17 @@ function TabComponent:AddDivision(options)
         local newH = 22 + contentH + 2
         divisionFrame.Size = UDim2.new(1, 0, 0, newH)
         record.Height = newH
-
-        -- Debounced rebalance: when this division's height changes,
-        -- the columns get re-flowed (shortest-column-first) so it always
-        -- lands in the right place — even if content is added later.
-        parentTab:_scheduleDivisionRelayout(state)
+        state.NeedsRelayout = true
     end
-
     contentLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(updateHeight)
     task.defer(updateHeight)
 
-    local dummyTab = {
-        _page        = content,
-        _window      = self._window,
-        _layoutOrder = 0,
-    }
+    divisionFrame.Parent = state.LeftCol
+
+    local dummyTab = {_page = content, _window = self._window, _layoutOrder = 0}
     setmetatable(dummyTab, TabComponent)
 
-    local division = { Frame = divisionFrame, Content = content, Record = record }
+    local division = {Frame = divisionFrame, Content = content, Record = record}
     setmetatable(division, {
         __index = function(_, methodName)
             local method = dummyTab[methodName]
@@ -1053,37 +1042,40 @@ function TabComponent:AddDivision(options)
     })
 
     function division:GetContainer() return divisionFrame end
-    function division:GetContent()   return content end
-    function division:GetTitle()     return titleLabel.Text end
-    function division:SetTitle(t)    titleLabel.Text = tostring(t) end
-    function division:SetVisible(v)  divisionFrame.Visible = v end
-    function division:IsVisible()    return divisionFrame.Visible end
-    function division:Relayout()     parentTab:_relayoutDivisions(state) end
+    function division:GetContent() return content end
+    function division:GetTitle() return titleLabel.Text end
+    function division:SetTitle(t) titleLabel.Text = tostring(t) end
+    function division:SetVisible(v) divisionFrame.Visible = v end
+    function division:IsVisible() return divisionFrame.Visible end
+    function division:Relayout() parentTab:_doRelayout(state) end
     function division:Destroy()
         for i, r in ipairs(state.Divisions) do
-            if r == record then
-                table.remove(state.Divisions, i)
-                break
-            end
+            if r == record then table.remove(state.Divisions, i); break end
         end
-
         divisionFrame:Destroy()
-        parentTab:_relayoutDivisions(state)
+        state.NeedsRelayout = true
 
         if #state.Divisions == 0 then
             if parentTab._activeDivisionState == state then
                 parentTab._activeDivisionState = nil
             end
+            if state.HeartbeatConn then
+                pcall(function() state.HeartbeatConn:Disconnect() end)
+                state.HeartbeatConn = nil
+            end
             state.Container:Destroy()
         end
     end
 
-    parentTab:_relayoutDivisions(state)
+    task.defer(function()
+        if state.Container and state.Container.Parent then
+            parentTab:_doRelayout(state)
+        end
+    end)
 
     if self._window then self._window:_registerSearch(divisionFrame, title) end
     return division
 end
-
 -- ════════════════════════════════════════════════════════════════════════════
 --  AddButton
 -- ════════════════════════════════════════════════════════════════════════════
