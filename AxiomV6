@@ -15,7 +15,7 @@ print([[
    YMM   ""`,m"       "Mm,MMM  "YMMMMMP" MMM  M'  "MMM
 ]])
 
-local b = "bul"
+local b = "vc56"
 
 local Axiom = {}
 Axiom.__index = Axiom
@@ -2749,7 +2749,7 @@ function TabComponent:AddKeybindPicker(options)
     local tooltip       = options.Tooltip
 
     local currentCallback = callback
-    local currentEnabled = true
+    local currentEnabled  = true
 
     local modifierShort = {
         LeftShift = "Shift", RightShift = "Shift",
@@ -2780,9 +2780,9 @@ function TabComponent:AddKeybindPicker(options)
 
     local function currentModifiers()
         local mods = {}
-        if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) or UserInputService:IsKeyDown(Enum.KeyCode.RightShift) then mods[#mods+1] = "Shift" end
-        if UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) or UserInputService:IsKeyDown(Enum.KeyCode.RightControl) then mods[#mods+1] = "Ctrl" end
-        if UserInputService:IsKeyDown(Enum.KeyCode.LeftAlt) or UserInputService:IsKeyDown(Enum.KeyCode.RightAlt) then mods[#mods+1] = "Alt" end
+        if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift)  or UserInputService:IsKeyDown(Enum.KeyCode.RightShift)  then mods[#mods+1] = "Shift" end
+        if UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) or UserInputService:IsKeyDown(Enum.KeyCode.RightControl) then mods[#mods+1] = "Ctrl"  end
+        if UserInputService:IsKeyDown(Enum.KeyCode.LeftAlt)     or UserInputService:IsKeyDown(Enum.KeyCode.RightAlt)     then mods[#mods+1] = "Alt"   end
         return mods
     end
 
@@ -2794,6 +2794,12 @@ function TabComponent:AddKeybindPicker(options)
     local currentCombo = parseKeySpec(defaultKey or "Unbound")
     local isWaiting    = false
     local pressConnection
+    local bindConnection        -- FIX: track the "listening for new key" connection
+
+    -- theme safety helper (FIX: prevents nil Color3 assignment crash)
+    local accentColor    = theme.Accent
+    local bindActiveColor = theme.CheckOn or theme.Accent
+    local hoverColor     = theme.AccentHover or theme.Accent
 
     local container = Instance.new("Frame")
     container.BackgroundTransparency = 1
@@ -2823,7 +2829,7 @@ function TabComponent:AddKeybindPicker(options)
     applyBorder(keyDisplay, theme.Border)
 
     local bindBtn = Instance.new("TextButton")
-    bindBtn.BackgroundColor3 = theme.Accent
+    bindBtn.BackgroundColor3 = accentColor
     bindBtn.Position = UDim2.new(1, -44, 0, 0)
     bindBtn.Size = UDim2.new(0, 44, 1, 0)
     bindBtn.Font = Enum.Font.RobotoMono
@@ -2842,7 +2848,7 @@ function TabComponent:AddKeybindPicker(options)
         else
             if toggleMode then
                 keyDisplay.Text = string.format("%s [%s]", display, currentState and "ON" or "OFF")
-                keyDisplay.TextColor3 = currentState and theme.Accent or theme.Text
+                keyDisplay.TextColor3 = currentState and accentColor or theme.Text
             else
                 keyDisplay.Text = display
                 keyDisplay.TextColor3 = theme.Text
@@ -2860,7 +2866,7 @@ function TabComponent:AddKeybindPicker(options)
 
         if mainKey:sub(1, 5) == "Mouse" then
             local expectedType
-            if mainKey == "Mouse1" then expectedType = Enum.UserInputType.MouseButton1
+            if     mainKey == "Mouse1" then expectedType = Enum.UserInputType.MouseButton1
             elseif mainKey == "Mouse2" then expectedType = Enum.UserInputType.MouseButton2
             elseif mainKey == "Mouse3" then expectedType = Enum.UserInputType.MouseButton3
             elseif mainKey == "Mouse4" then expectedType = Enum.UserInputType.MouseButton4
@@ -2906,33 +2912,58 @@ function TabComponent:AddKeybindPicker(options)
     end
 
     bindBtn.MouseEnter:Connect(function()
-        if not isWaiting and currentEnabled then bindBtn.BackgroundColor3 = theme.AccentHover end
+        if not isWaiting and currentEnabled then bindBtn.BackgroundColor3 = hoverColor end
     end)
     bindBtn.MouseLeave:Connect(function()
-        if not isWaiting then bindBtn.BackgroundColor3 = theme.Accent end
+        if not isWaiting then bindBtn.BackgroundColor3 = accentColor end
     end)
 
     local function finalizeCombo(combo)
+        if bindConnection then bindConnection:Disconnect(); bindConnection = nil end
         currentCombo = combo
         bindBtn.Text = "Bind"
-        bindBtn.BackgroundColor3 = theme.Accent
+        bindBtn.BackgroundColor3 = accentColor
         isWaiting = false
         updateDisplay()
         reconnectPressListener()
         if not toggleMode then safeCall(currentCallback, comboToString(currentCombo)) end
     end
 
+    local function cancelBind()
+        if bindConnection then bindConnection:Disconnect(); bindConnection = nil end
+        isWaiting = false
+        bindBtn.Text = "Bind"
+        bindBtn.BackgroundColor3 = accentColor
+        updateDisplay()
+    end
+
     bindBtn.MouseButton1Click:Connect(function()
-        if isWaiting or not currentEnabled then return end
+        if not currentEnabled then return end
+
+        -- FIX: clicking Bind again while waiting cancels instead of doing nothing
+        if isWaiting then
+            cancelBind()
+            return
+        end
+
         isWaiting = true
         bindBtn.Text = "..."
-        bindBtn.BackgroundColor3 = theme.CheckOn
+        bindBtn.BackgroundColor3 = bindActiveColor          -- FIX: safe theme color
         keyDisplay.Text = allowCombos and "Press key(s)..." or "Press a key..."
-        keyDisplay.TextColor3 = theme.Accent
+        keyDisplay.TextColor3 = accentColor
 
-        local con
-        con = UserInputService.InputBegan:Connect(function(input, gameProcessed)
+        bindConnection = UserInputService.InputBegan:Connect(function(input, gameProcessed)
+            if not isWaiting then return end
+
+            -- Allow Escape to cancel even when Roblox marks it as gameProcessed
+            if input.UserInputType == Enum.UserInputType.Keyboard
+               and input.KeyCode == Enum.KeyCode.Escape then
+                cancelBind()
+                return
+            end
+
             if gameProcessed then return end
+
             local mouseMap = {
                 [Enum.UserInputType.MouseButton1] = "Mouse1",
                 [Enum.UserInputType.MouseButton2] = "Mouse2",
@@ -2940,27 +2971,38 @@ function TabComponent:AddKeybindPicker(options)
                 [Enum.UserInputType.MouseButton4] = "Mouse4",
                 [Enum.UserInputType.MouseButton5] = "Mouse5",
             }
+
             if mouseMap[input.UserInputType] then
                 local mods = allowCombos and currentModifiers() or {}
                 mods[#mods+1] = mouseMap[input.UserInputType]
-                con:Disconnect()
                 finalizeCombo(mods)
                 return
             end
+
+            -- Treat touch as Mouse1 for bind purposes (mobile parity)
+            if input.UserInputType == Enum.UserInputType.Touch then
+                local mods = allowCombos and currentModifiers() or {}
+                mods[#mods+1] = "Mouse1"
+                finalizeCombo(mods)
+                return
+            end
+
             if input.UserInputType == Enum.UserInputType.Keyboard then
                 local pressed = input.KeyCode.Name
                 if isModifier(pressed) then
                     local shortName = modifierShort[pressed]
                     local held = currentModifiers()
                     local hasMod = false
-                    for _, m in ipairs(held) do if m == shortName then hasMod = true break end end
+                    for _, m in ipairs(held) do
+                        if m == shortName then hasMod = true; break end
+                    end
                     if not hasMod then held[#held+1] = shortName end
                     keyDisplay.Text = table.concat(held, "+") .. " + ..."
                     return
                 end
+
                 local mods = allowCombos and currentModifiers() or {}
                 mods[#mods+1] = pressed
-                con:Disconnect()
                 finalizeCombo(mods)
             end
         end)
@@ -2988,7 +3030,7 @@ function TabComponent:AddKeybindPicker(options)
     function pickerObj:SetEnabled(state)
         currentEnabled = state
         bindBtn.Active = state
-        bindBtn.BackgroundColor3 = state and theme.Accent or disabledColor(theme.Accent)
+        bindBtn.BackgroundColor3 = state and accentColor or disabledColor(accentColor)
         label.TextColor3 = state and theme.Text or disabledColor(theme.Text)
         updateDisplay()
     end
@@ -2996,6 +3038,7 @@ function TabComponent:AddKeybindPicker(options)
     function pickerObj:Destroy()
         container:Destroy()
         if pressConnection then pressConnection:Disconnect() end
+        if bindConnection then bindConnection:Disconnect() end
     end
 
     local key = options.StateKey or self._window:_autoStateKey("tab", text)
