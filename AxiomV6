@@ -2202,7 +2202,7 @@ function TabComponent:AddColorPicker(options)
     local tooltip  = options.Tooltip
 
     local color = options.Default or Color3.new(1, 1, 1)
-    local r, g, b = color.R, color.G, color.B
+    local h, s, v = color:ToHSV()
     local isOpen = false
     local currentCallback = callback
     local currentEnabled = true
@@ -2236,91 +2236,242 @@ function TabComponent:AddColorPicker(options)
     applyCorner(preview, 2)
     applyBorder(preview, theme.Border)
 
+    local EXPAND_H = 172
+
     local expandFrame = Instance.new("Frame")
     expandFrame.BackgroundColor3 = theme.TabNormal
     expandFrame.Position = UDim2.new(0, 0, 0, 24)
-    expandFrame.Size = UDim2.new(1, 0, 0, 90)
+    expandFrame.Size = UDim2.new(1, 0, 0, EXPAND_H)
     expandFrame.Parent = container
     applyBorder(expandFrame, theme.Border)
 
     header.MouseButton1Click:Connect(function()
         if not currentEnabled then return end
         isOpen = not isOpen
-        local targetHeight = isOpen and (24 + 90) or 24
+        local targetHeight = isOpen and (24 + EXPAND_H) or 24
         TweenService:Create(container, TWEEN_FAST, {Size = UDim2.new(1, 0, 0, targetHeight)}):Play()
     end)
 
-    local function createChannelSlider(channelName, yPos, initialVal, channelUpdater)
-        local label = Instance.new("TextLabel")
-        label.BackgroundTransparency = 1
-        label.Position = UDim2.new(0, 6, 0, yPos)
-        label.Size = UDim2.new(0, 14, 0, 20)
-        label.Font = Enum.Font.RobotoMono
-        label.Text = channelName
-        label.TextColor3 = theme.SubText
-        label.TextSize = 12
-        label.Parent = expandFrame
+    -- ── Saturation / Value square ─────────────────────────────────────────
+    local svArea = Instance.new("Frame")
+    svArea.Position = UDim2.new(0, 6, 0, 6)
+    svArea.Size = UDim2.new(1, -12, 0, 110)
+    svArea.BackgroundColor3 = Color3.fromHSV(h, 1, 1)
+    svArea.Parent = expandFrame
+    applyCorner(svArea, 2)
+    applyBorder(svArea, theme.Border)
+    svArea.ClipsDescendants = true
 
-        local track = Instance.new("Frame")
-        track.BackgroundColor3 = theme.SliderTrack
-        track.Position = UDim2.new(0, 26, 0, yPos + 7)
-        track.Size = UDim2.new(1, -34, 0, 6)
-        track.Parent = expandFrame
-        applyCorner(track, 2)
-        applyBorder(track, theme.Border)
+    -- White gradient (left = white -> right = transparent) : saturation
+    local whiteOverlay = Instance.new("Frame")
+    whiteOverlay.Size = UDim2.new(1, 0, 1, 0)
+    whiteOverlay.BackgroundColor3 = Color3.new(1, 1, 1)
+    whiteOverlay.BorderSizePixel = 0
+    whiteOverlay.Parent = svArea
 
-        local fill = Instance.new("Frame")
-        fill.BackgroundColor3 = theme.Accent
-        fill.Size = UDim2.new(initialVal, 0, 1, 0)
-        fill.Parent = track
-        applyCorner(fill, 2)
+    local whiteGrad = Instance.new("UIGradient")
+    whiteGrad.Transparency = NumberSequence.new({
+        NumberSequenceKeypoint.new(0, 0),
+        NumberSequenceKeypoint.new(1, 1),
+    })
+    whiteGrad.Rotation = 0
+    whiteGrad.Parent = whiteOverlay
 
-        local handle = Instance.new("TextButton")
-        handle.AnchorPoint = Vector2.new(0.5, 0.5)
-        handle.Position = UDim2.new(initialVal, 0, 0.5, 0)
-        handle.Size = UDim2.new(0, 8, 0, 16)
-        handle.BackgroundColor3 = theme.Text
-        handle.Text = ""
-        handle.Parent = track
-        applyCorner(handle, 2)
+    -- Black gradient (top = transparent -> bottom = black) : value
+    local blackOverlay = Instance.new("Frame")
+    blackOverlay.Size = UDim2.new(1, 0, 1, 0)
+    blackOverlay.BackgroundColor3 = Color3.new(0, 0, 0)
+    blackOverlay.BorderSizePixel = 0
+    blackOverlay.Parent = svArea
 
-        local dragging = false
-        local function onDrag(input)
-            if not currentEnabled then return end
-            local rel = math.clamp((input.Position.X - track.AbsolutePosition.X) / track.AbsoluteSize.X, 0, 1)
-            handle.Position = UDim2.new(rel, 0, 0.5, 0)
-            fill.Size = UDim2.new(rel, 0, 1, 0)
-            channelUpdater(rel)
-            preview.BackgroundColor3 = Color3.new(r, g, b)
-            safeCall(currentCallback, Color3.new(r, g, b))
-        end
+    local blackGrad = Instance.new("UIGradient")
+    blackGrad.Transparency = NumberSequence.new({
+        NumberSequenceKeypoint.new(0, 1),
+        NumberSequenceKeypoint.new(1, 0),
+    })
+    blackGrad.Rotation = 90
+    blackGrad.Parent = blackOverlay
 
-        handle.InputBegan:Connect(function(i)
-            if i.UserInputType == Enum.UserInputType.MouseButton1 then dragging = true end
-        end)
-        UserInputService.InputEnded:Connect(function(i)
-            if i.UserInputType == Enum.UserInputType.MouseButton1 then dragging = false end
-        end)
-        UserInputService.InputChanged:Connect(function(i)
-            if dragging and i.UserInputType == Enum.UserInputType.MouseMovement then onDrag(i) end
-        end)
-        track.InputBegan:Connect(function(i)
-            if i.UserInputType == Enum.UserInputType.MouseButton1 then onDrag(i) end
-        end)
+    -- SV handle (circle)
+    local svHandle = Instance.new("Frame")
+    svHandle.AnchorPoint = Vector2.new(0.5, 0.5)
+    svHandle.Position = UDim2.new(s, 0, 1 - v, 0)
+    svHandle.Size = UDim2.new(0, 10, 0, 10)
+    svHandle.BackgroundColor3 = Color3.new(1, 1, 1)
+    svHandle.BackgroundTransparency = 0.4
+    svHandle.BorderSizePixel = 0
+    svHandle.ZIndex = 5
+    svHandle.Parent = svArea
+    local svCorner = Instance.new("UICorner")
+    svCorner.CornerRadius = UDim.new(1, 0)
+    svCorner.Parent = svHandle
+    local svStroke = Instance.new("UIStroke")
+    svStroke.Thickness = 1.5
+    svStroke.Color = Color3.new(0, 0, 0)
+    svStroke.Parent = svHandle
+
+    -- ── Hue strip ─────────────────────────────────────────────────────────
+    local hueBar = Instance.new("Frame")
+    hueBar.Position = UDim2.new(0, 6, 0, 122)
+    hueBar.Size = UDim2.new(1, -12, 0, 12)
+    hueBar.BackgroundColor3 = Color3.new(1, 1, 1)
+    hueBar.Parent = expandFrame
+    applyCorner(hueBar, 2)
+    applyBorder(hueBar, theme.Border)
+    hueBar.ClipsDescendants = true
+
+    local hueGrad = Instance.new("UIGradient")
+    hueGrad.Color = ColorSequence.new({
+        ColorSequenceKeypoint.new(0.000, Color3.fromRGB(255, 0, 0)),
+        ColorSequenceKeypoint.new(0.167, Color3.fromRGB(255, 255, 0)),
+        ColorSequenceKeypoint.new(0.333, Color3.fromRGB(0, 255, 0)),
+        ColorSequenceKeypoint.new(0.500, Color3.fromRGB(0, 255, 255)),
+        ColorSequenceKeypoint.new(0.667, Color3.fromRGB(0, 0, 255)),
+        ColorSequenceKeypoint.new(0.833, Color3.fromRGB(255, 0, 255)),
+        ColorSequenceKeypoint.new(1.000, Color3.fromRGB(255, 0, 0)),
+    })
+    hueGrad.Parent = hueBar
+
+    local hueHandle = Instance.new("Frame")
+    hueHandle.AnchorPoint = Vector2.new(0.5, 0.5)
+    hueHandle.Position = UDim2.new(h, 0, 0.5, 0)
+    hueHandle.Size = UDim2.new(0, 4, 1, 0)
+    hueHandle.BackgroundColor3 = Color3.new(1, 1, 1)
+    hueHandle.BorderSizePixel = 0
+    hueHandle.ZIndex = 5
+    hueHandle.Parent = hueBar
+    local hueStroke = Instance.new("UIStroke")
+    hueStroke.Thickness = 1.5
+    hueStroke.Color = Color3.new(0, 0, 0)
+    hueStroke.Parent = hueHandle
+    applyCorner(hueHandle, 2)
+
+    -- ── Preview swatch + hex input ────────────────────────────────────────
+    local previewBox = Instance.new("Frame")
+    previewBox.Position = UDim2.new(0, 6, 0, 140)
+    previewBox.Size = UDim2.new(0, 26, 0, 26)
+    previewBox.BackgroundColor3 = color
+    previewBox.Parent = expandFrame
+    applyCorner(previewBox, 2)
+    applyBorder(previewBox, theme.Border)
+
+    local hexBox = Instance.new("TextBox")
+    hexBox.Position = UDim2.new(0, 38, 0, 140)
+    hexBox.Size = UDim2.new(1, -44, 0, 26)
+    hexBox.BackgroundColor3 = theme.FrameBg
+    hexBox.Font = Enum.Font.RobotoMono
+    hexBox.Text = ""
+    hexBox.PlaceholderText = "#RRGGBB"
+    hexBox.TextColor3 = theme.Text
+    hexBox.TextSize = 12
+    hexBox.ClearTextOnFocus = false
+    hexBox.Parent = expandFrame
+    applyCorner(hexBox, 2)
+    applyBorder(hexBox, theme.Border)
+
+    -- ── Helpers / refresh ─────────────────────────────────────────────────
+    local function currentColor()
+        return Color3.fromHSV(h, s, v)
     end
 
-    createChannelSlider("R", 8,  r, function(v) r = v end)
-    createChannelSlider("G", 34, g, function(v) g = v end)
-    createChannelSlider("B", 60, b, function(v) b = v end)
+    local function toHex(c)
+        return string.format("#%02X%02X%02X",
+            math.floor(c.R * 255 + 0.5),
+            math.floor(c.G * 255 + 0.5),
+            math.floor(c.B * 255 + 0.5))
+    end
+
+    local function refreshAll()
+        local c = currentColor()
+        svArea.BackgroundColor3 = Color3.fromHSV(h, 1, 1)
+        svHandle.Position = UDim2.new(s, 0, 1 - v, 0)
+        hueHandle.Position = UDim2.new(h, 0, 0.5, 0)
+        previewBox.BackgroundColor3 = c
+        preview.BackgroundColor3 = c
+        hexBox.Text = toHex(c)
+    end
+
+    local function fireCallback()
+        safeCall(currentCallback, currentColor())
+    end
+
+    -- ── SV drag ───────────────────────────────────────────────────────────
+    local svDragging = false
+    local function svUpdate(input)
+        local relX = math.clamp((input.Position.X - svArea.AbsolutePosition.X) / svArea.AbsoluteSize.X, 0, 1)
+        local relY = math.clamp((input.Position.Y - svArea.AbsolutePosition.Y) / svArea.AbsoluteSize.Y, 0, 1)
+        s = relX
+        v = 1 - relY
+        refreshAll()
+        fireCallback()
+    end
+
+    svArea.InputBegan:Connect(function(i)
+        if not currentEnabled then return end
+        if i.UserInputType == Enum.UserInputType.MouseButton1 then
+            svDragging = true
+            svUpdate(i)
+        end
+    end)
+    UserInputService.InputEnded:Connect(function(i)
+        if i.UserInputType == Enum.UserInputType.MouseButton1 then svDragging = false end
+    end)
+    UserInputService.InputChanged:Connect(function(i)
+        if svDragging and i.UserInputType == Enum.UserInputType.MouseMovement then
+            svUpdate(i)
+        end
+    end)
+
+    -- ── Hue drag ──────────────────────────────────────────────────────────
+    local hueDragging = false
+    local function hueUpdate(input)
+        local relX = math.clamp((input.Position.X - hueBar.AbsolutePosition.X) / hueBar.AbsoluteSize.X, 0, 1)
+        h = relX
+        refreshAll()
+        fireCallback()
+    end
+
+    hueBar.InputBegan:Connect(function(i)
+        if not currentEnabled then return end
+        if i.UserInputType == Enum.UserInputType.MouseButton1 then
+            hueDragging = true
+            hueUpdate(i)
+        end
+    end)
+    UserInputService.InputEnded:Connect(function(i)
+        if i.UserInputType == Enum.UserInputType.MouseButton1 then hueDragging = false end
+    end)
+    UserInputService.InputChanged:Connect(function(i)
+        if hueDragging and i.UserInputType == Enum.UserInputType.MouseMovement then
+            hueUpdate(i)
+        end
+    end)
+
+    -- ── Hex input ─────────────────────────────────────────────────────────
+    hexBox.FocusLost:Connect(function()
+        local txt = hexBox.Text:gsub("#", ""):gsub("%s", "")
+        if #txt == 6 and txt:match("^%x+$") then
+            local r = tonumber(txt:sub(1, 2), 16) / 255
+            local g = tonumber(txt:sub(3, 4), 16) / 255
+            local b = tonumber(txt:sub(5, 6), 16) / 255
+            h, s, v = Color3.new(r, g, b):ToHSV()
+            refreshAll()
+            fireCallback()
+        else
+            refreshAll()
+        end
+    end)
+
+    refreshAll()
 
     if tooltip then attachTooltip(header, tooltip, self._window) end
     if self._window then self._window:_registerSearch(container, text) end
 
     local obj = {}
-    function obj:GetColor() return Color3.new(r, g, b) end
+    function obj:GetColor() return currentColor() end
     function obj:SetColor(clr)
-        r, g, b = clr.R, clr.G, clr.B
-        preview.BackgroundColor3 = clr
+        h, s, v = clr:ToHSV()
+        refreshAll()
         safeCall(currentCallback, clr)
     end
     function obj:SetCallback(cb) currentCallback = cb end
@@ -2337,13 +2488,15 @@ function TabComponent:AddColorPicker(options)
     local key = options.StateKey or self._window:_autoStateKey("tab", text)
     self._window:_registerState(
         key,
-        function() return { r = r, g = g, b = b } end,
-        function(v) obj:SetColor(Color3.new(v.r, v.g, v.b)) end
+        function()
+            local c = currentColor()
+            return { r = c.R, g = c.G, b = c.B }
+        end,
+        function(st) obj:SetColor(Color3.new(st.r, st.g, st.b)) end
     )
 
     return obj
 end
-
 -- ════════════════════════════════════════════════════════════════════════════
 --  AddLabel / AddSection / AddSeparator
 -- ════════════════════════════════════════════════════════════════════════════
