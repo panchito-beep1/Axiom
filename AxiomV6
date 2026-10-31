@@ -14,7 +14,7 @@ print([[
    888   888,  oP"``"Yo,  888"888,_ _,88P888 Y88" 888o
    YMM   ""`,m"       "Mm,MMM  "YMMMMMP" MMM  M'  "MMM
 ]])
---some new components added. and fixed some issues with some components... FIXED FIXED FIXED FIXED FIXED FIXED FIXED FIXED FIXED FIXED FIXED FIXED FIFED FIXED FIXED FIXED FIXED 
+--some new components added. and fixed some issues with some components... why does this update have so many ererosa=-fdksadpdfoijsad;ofkisnjdfvgkjsnbhdffvikjsdbndffvojdsnfcvkjndxfvbkjdnfgvijshndffgivjhuhsbdklhfjbsdjfbnskdjfnhslkdfhslkidfjslidhjflskdjflsidhfjvbglsjkhndflikswjedfliswjdfolijsdofij
 
 
 local V = "V6.8"
@@ -1665,6 +1665,13 @@ function TabComponent:AddSlider(options)
     self._window:_registerState(key, function() return value end, function(v) obj:SetValue(v) end)
 
     return obj
+end
+
+function TabComponent:AddDragInt(options)
+    options = options or {}
+    options.Int = true
+    options.Decimals = 0
+    return self:AddDragFloat(options)
 end
 
 -- ════════════════════════════════════════════════════════════════════════════
