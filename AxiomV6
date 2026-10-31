@@ -14,10 +14,10 @@ print([[
    888   888,  oP"``"Yo,  888"888,_ _,88P888 Y88" 888o
    YMM   ""`,m"       "Mm,MMM  "YMMMMMP" MMM  M'  "MMM
 ]])
---some new components added. and fixed some issues with some components...
+--some new components added. and fixed some issues with some components... FIXED FIXED FIXED FIXED FIXED FIXED FIXED FIXED FIXED FIXED FIXED FIXED FIFED FIXED FIXED FIXED FIXED 
 
 
-local V = "V6.6"
+local V = "V6.8"
 
 local Axiom = {}
 Axiom.__index = Axiom
@@ -6015,33 +6015,34 @@ function TabComponent:AddDragFloat(options)
     label.TextXAlignment = Enum.TextXAlignment.Left
     label.Parent = container
 
-    local inputBtn = Instance.new("TextButton")
-    inputBtn.BackgroundColor3 = options.Color or theme.FrameBg
+    -- TextBox (not TextButton) so we can support click-to-edit
+    local inputBox = Instance.new("TextBox")
+    inputBox.BackgroundColor3 = options.Color or theme.FrameBg
     if options.Color then warnCustomColor(self, "DragFloat") end
-    inputBtn.Position = UDim2.new(1, -84, 0, 0)
-    inputBtn.Size = UDim2.new(0, 84, 1, 0)
-    inputBtn.Font = Enum.Font.RobotoMono
-    inputBtn.Text = isInt and tostring(math.floor(value + 0.5)) or string.format("%." .. decimals .. "f", value)
-    inputBtn.TextColor3 = theme.Text
-    inputBtn.TextSize = 13
-    inputBtn.Parent = container
-    applyCorner(inputBtn, 2)
-    applyBorder(inputBtn, theme.Border)
+    inputBox.Position = UDim2.new(1, -84, 0, 0)
+    inputBox.Size = UDim2.new(0, 84, 1, 0)
+    inputBox.Font = Enum.Font.RobotoMono
+    inputBox.TextColor3 = theme.Text
+    inputBox.TextSize = 13
+    inputBox.TextXAlignment = Enum.TextXAlignment.Center
+    inputBox.ClearTextOnFocus = false
+    inputBox.TextEditable = false  -- editing off until user clicks without dragging
+    inputBox.Parent = container
+    applyCorner(inputBox, 2)
+    applyBorder(inputBox, theme.Border)
 
     local function format()
         return isInt and tostring(math.floor(value + 0.5)) or string.format("%." .. decimals .. "f", value)
     end
-
-    local function refresh()
-        inputBtn.Text = format()
-    end
+    local function refresh() inputBox.Text = format() end
+    refresh()
 
     local dragging = false
     local dragStart = nil
     local valueAtDragStart = nil
     local moved = false
 
-    inputBtn.InputBegan:Connect(function(i)
+    inputBox.InputBegan:Connect(function(i)
         if not currentEnabled then return end
         if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
             dragging = true
@@ -6052,13 +6053,13 @@ function TabComponent:AddDragFloat(options)
     end)
 
     local endConn = UserInputService.InputEnded:Connect(function(i)
-        if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
-            if dragging and not moved then
-                inputBtn.TextEditable = true
-                -- Trigger focus for exact entry
-            end
-            dragging = false
-            inputBtn.TextEditable = false
+        if i.UserInputType ~= Enum.UserInputType.MouseButton1 and i.UserInputType ~= Enum.UserInputType.Touch then return end
+        if not dragging then return end
+        dragging = false
+        if not moved then
+            -- Click without drag → enter edit mode
+            inputBox.TextEditable = true
+            inputBox:CaptureFocus()
         end
     end)
 
@@ -6066,27 +6067,27 @@ function TabComponent:AddDragFloat(options)
         if not dragging then return end
         if i.UserInputType ~= Enum.UserInputType.MouseMovement and i.UserInputType ~= Enum.UserInputType.Touch then return end
         local d = i.Position - dragStart
-        if math.abs(d.X) > 2 then moved = true end
-        local delta = d.X * speed
-        value = math.clamp(valueAtDragStart + delta, min, max)
-        if isInt then value = math.floor(value + 0.5) end
-        refresh()
-        safeCall(currentCallback, value)
-    end)
-
-    inputBtn.FocusLost:Connect(function()
-        local n = tonumber(inputBtn.Text)
-        if n then
-            value = math.clamp(n, min, max)
+        if not moved and math.abs(d.X) > 2 then moved = true end
+        if moved then
+            value = math.clamp(valueAtDragStart + d.X * speed, min, max)
             if isInt then value = math.floor(value + 0.5) end
             refresh()
             safeCall(currentCallback, value)
-        else
-            refresh()
         end
     end)
 
-    if tooltip then attachTooltip(inputBtn, tooltip, self._window) end
+    inputBox.FocusLost:Connect(function()
+        inputBox.TextEditable = false
+        local n = tonumber(inputBox.Text)
+        if n then
+            value = math.clamp(n, min, max)
+            if isInt then value = math.floor(value + 0.5) end
+            safeCall(currentCallback, value)
+        end
+        refresh()
+    end)
+
+    if tooltip then attachTooltip(inputBox, tooltip, self._window) end
     if self._window then self._window:_registerSearch(container, text) end
 
     local obj = {}
@@ -6100,9 +6101,9 @@ function TabComponent:AddDragFloat(options)
     function obj:SetCallback(cb) currentCallback = cb end
     function obj:SetEnabled(s)
         currentEnabled = s
-        inputBtn.Active = s
-        inputBtn.BackgroundColor3 = s and (options.Color or theme.FrameBg) or disabledColor(options.Color or theme.FrameBg)
-        inputBtn.TextColor3 = s and theme.Text or disabledColor(theme.Text)
+        inputBox.Active = s
+        inputBox.BackgroundColor3 = s and (options.Color or theme.FrameBg) or disabledColor(options.Color or theme.FrameBg)
+        inputBox.TextColor3 = s and theme.Text or disabledColor(theme.Text)
     end
     function obj:IsEnabled() return currentEnabled end
     function obj:Destroy()
@@ -6114,13 +6115,6 @@ function TabComponent:AddDragFloat(options)
     local key = options.StateKey or self._window:_autoStateKey("drag", text)
     self._window:_registerState(key, function() return value end, function(v) obj:SetValue(v) end)
     return obj
-end
-
-function TabComponent:AddDragInt(options)
-    options = options or {}
-    options.Int = true
-    options.Decimals = 0
-    return self:AddDragFloat(options)
 end
 
 -- ════════════════════════════════════════════════════════════════════════════
