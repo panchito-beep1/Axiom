@@ -14,7 +14,8 @@ print([[
    888   888,  oP"``"Yo,  888"888,_ _,88P888 Y88" 888o
    YMM   ""`,m"       "Mm,MMM  "YMMMMMP" MMM  M'  "MMM
 ]])
---some new components added.
+--some new components added. and fixed some issues with some components...
+
 
 local V = "V6.6"
 
@@ -6687,19 +6688,13 @@ function Axiom:CreateTargetWindow(options)
         Draggable = options.DragEnabled ~= false,
         Resizable = options.Resizable  ~= false,
         OnClose   = function() end,
+        
         OnDragEnd = function(pos)
-            owner:_registerStateSnapshot and owner:_registerStateSnapshot(stateKeyBase .. "::pos", {
-                pos.X.Scale, pos.X.Offset, pos.Y.Scale, pos.Y.Offset,
-            })
             if owner._stateFilePath then pcall(function() owner:SaveState() end) end
         end,
         OnResize  = function(sz)
-            owner:_registerStateSnapshot and owner:_registerStateSnapshot(stateKeyBase .. "::size", {
-                sz.X.Scale, sz.X.Offset, sz.Y.Scale, sz.Y.Offset,
-            })
             if owner._stateFilePath then pcall(function() owner:SaveState() end) end
         end,
-    })
 
     local body = chrome:GetBody()
     local frame = chrome:GetFrame()
@@ -6722,21 +6717,7 @@ function Axiom:CreateTargetWindow(options)
     pageContainer.Size = UDim2.new(1, 0, 1, -26)
     pageContainer.Parent = body
 
-    -- Persisted position/size (loaded or defaults)
-    local persisted = owner._stateRegistry and owner._stateRegistry[stateKeyBase .. "::pos"]
-    if persisted then
-        local ok, v = pcall(persisted.get)
-        if ok and type(v) == "table" and #v == 4 then
-            frame.Position = UDim2.new(v[1], v[2], v[3], v[4])
-        end
-    end
-    local persistedSize = owner._stateRegistry and owner._stateRegistry[stateKeyBase .. "::size"]
-    if persistedSize then
-        local ok, v = pcall(persistedSize.get)
-        if ok and type(v) == "table" and #v == 4 then
-            frame.Size = UDim2.new(v[1], v[2], v[3], v[4])
-        end
-    end
+    -- (position/size restored below via _registerState setters, when win:LoadState() runs)
 
     local tw = {
         _owner      = owner,
