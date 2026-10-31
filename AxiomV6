@@ -14,10 +14,10 @@ print([[
    888   888,  oP"``"Yo,  888"888,_ _,88P888 Y88" 888o
    YMM   ""`,m"       "Mm,MMM  "YMMMMMP" MMM  M'  "MMM
 ]])
---some new components added. and fixed some issues with some components... why does this update have so many ererosa=-fdksadpdfoijsad;ofkisnjdfvgkjsnbhdffvikjsdbndffvojdsnfcvkjndxfvbkjdnfgvijshndffgivjhuhsbdklhfjbsdjfbnskdjfnhslkdfhslkidfjslidhjflskdjflsidhfjvbglsjkhndflikswjedfliswjdfolijsdofij
 
+--axiom panchito
 
-local V = "V6.8"
+local V = "V6.8.3"
 
 local Axiom = {}
 Axiom.__index = Axiom
@@ -1392,8 +1392,9 @@ function TabComponent:AddButton(options)
     if self._window then self._window:_registerSearch(btn, text) end
 
     local obj = {}
-    function obj:SetText(t) lbl.Text = t end
     function obj:GetText() return lbl.Text end
+    function obj:GetInstance() return lbl end 
+    function obj:Destroy() lbl:Destroy() end
     function obj:SetCallback(cb) currentCallback = cb end
     function obj:SetIcon(id)
         if not icon then
@@ -3942,10 +3943,14 @@ function TabComponent:AddLayout(options)
                     local comp = method(dummyTab, table.unpack(args))
                     dummyTab._page = originalPage
 
-                    local inst = comp:GetInstance()
-                    inst.AnchorPoint = Vector2.new(0, 0)
-                    inst.Position = UDim2.new(0, 0, 0, 0)
-                    inst.Size = UDim2.new(1, 0, 1, 0)
+                    if comp and comp.GetInstance then
+                        local inst = comp:GetInstance()
+                        if inst then
+                            inst.AnchorPoint = Vector2.new(0, 0)
+                            inst.Position = UDim2.new(0, 0, 0, 0)
+                            inst.Size = UDim2.new(1, 0, 1, 0)
+                        end
+                    end
 
                     wrapper.LayoutOrder = dummyTab._layoutOrder
                     dummyTab._layoutOrder = dummyTab._layoutOrder + 1
