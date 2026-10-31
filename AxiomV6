@@ -14,8 +14,9 @@ print([[
    888   888,  oP"``"Yo,  888"888,_ _,88P888 Y88" 888o
    YMM   ""`,m"       "Mm,MMM  "YMMMMMP" MMM  M'  "MMM
 ]])
+--some new components added.
 
-local b = "vc56"
+local V = "V6.6"
 
 local Axiom = {}
 Axiom.__index = Axiom
@@ -205,6 +206,247 @@ local function warnCustomColor(tab, componentName)
         })
     end
 end
+
+-- ════════════════════════════════════════════════════════════════════════════
+--  Axiom._Internal — shared helpers for TargetWindow + Viewport + future
+-- ════════════════════════════════════════════════════════════════════════════
+Axiom._Internal = Axiom._Internal or {}
+
+function Axiom._Internal.PrepareModel(originalModel)
+    if typeof(originalModel) ~= "Instance" then return nil end
+    local wasArchivable = originalModel.Archivable
+    originalModel.Archivable = true
+    local ok, clone = pcall(function() return originalModel:Clone() end)
+    originalModel.Archivable = wasArchivable
+    if not ok or not clone then return nil end
+
+    local hum = clone:FindFirstChildOfClass("Humanoid")
+    if hum then hum:Destroy() end
+    for _, d in ipairs(clone:GetDescendants()) do
+        if d:IsA("BasePart") then
+            d.Anchored = true
+            d.CanCollide = false
+        end
+    end
+    if clone:IsA("BasePart") then
+        clone.Anchored = true
+        clone.CFrame = CFrame.new()
+    elseif clone:IsA("Model") then
+        pcall(function() clone:PivotTo(CFrame.new()) end)
+    end
+    return clone
+end
+
+function Axiom._Internal.FitCamera(camera, model, fov, padding, angle)
+    if not camera or not model then return end
+    local center, size
+    if model:IsA("Model") then
+        local ok, cf, sz = pcall(function()
+            local c, s = model:GetBoundingBox()
+            return c, s
+        end)
+        if ok and cf then center, size = cf.Position, sz end
+    elseif model:IsA("BasePart") then
+        center, size = model.Position, model.Size
+    end
+    center = center or Vector3.zero
+    size = size or Vector3.new(2, 2, 2)
+    if size.Magnitude < 0.01 then size = Vector3.new(2, 2, 2) end
+
+    local radius = size.Magnitude * 0.5 * (padding or 1.3)
+    local dist = radius / math.tan(math.rad(fov or 30) * 0.5)
+    local rotCF = CFrame.Angles(0, angle or 0, 0)
+    local offset = rotCF * Vector3.new(0, radius * 0.25, dist)
+    camera.FieldOfView = fov or 30
+    camera.CFrame = CFrame.lookAt(center + offset, center)
+    return center, radius
+end
+
+-- ════════════════════════════════════════════════════════════════════════════
+--  Axiom._Internal.CreateWindowChrome — shared chrome for secondary windows
+-- ════════════════════════════════════════════════════════════════════════════
+function Axiom._Internal.CreateWindowChrome(opts)
+    local theme    = opts.Theme
+    local parent   = opts.Parent        or CoreGui
+    local title    = opts.Title         or "Window"
+    local position = opts.Position      or UDim2.new(0.5, -210, 0.3, 0)
+    local size     = opts.Size          or UDim2.new(0, 420, 0, 320)
+    local icon     = opts.Icon
+    local draggable = opts.Draggable    ~= false
+    local resizable = opts.Resizable    ~= false
+    local onClose   = opts.OnClose
+    local onResize  = opts.OnResize
+    local onDragEnd = opts.OnDragEnd
+
+    local screen = Instance.new("ScreenGui")
+    screen.Name = "AxiomWin_" .. title .. "_" .. tostring(math.random(1, 99999))
+    screen.ResetOnSpawn = false
+    screen.Parent = parent
+
+    local frame = Instance.new("Frame")
+    frame.BackgroundTransparency = 1
+    frame.Position = position
+    frame.Size = size
+    frame.Parent = screen
+
+    local titleBar = Instance.new("Frame")
+    titleBar.BackgroundColor3 = theme.TitleBg
+    titleBar.Size = UDim2.new(1, 0, 0, 24)
+    titleBar.Parent = frame
+    applyCorner(titleBar, 2)
+    applyBorder(titleBar, theme.Border)
+
+    local titleLbl = Instance.new("TextLabel")
+    titleLbl.BackgroundTransparency = 1
+    titleLbl.Font = Enum.Font.RobotoMono
+    titleLbl.Text = title
+    titleLbl.TextColor3 = theme.Text
+    titleLbl.TextSize = 13
+    titleLbl.TextXAlignment = Enum.TextXAlignment.Left
+    titleLbl.RichText = true
+    if icon then
+        local iconLbl = Instance.new("ImageLabel")
+        iconLbl.BackgroundTransparency = 1
+        iconLbl.Size = UDim2.new(0, 18, 0, 18)
+        iconLbl.Position = UDim2.new(0, 4, 0.5, -9)
+        iconLbl.Image = icon
+        iconLbl.Parent = titleBar
+        titleLbl.Position = UDim2.new(0, 26, 0, 0)
+        titleLbl.Size = UDim2.new(1, -74, 1, 0)
+    else
+        titleLbl.Position = UDim2.new(0, 8, 0, 0)
+        titleLbl.Size = UDim2.new(1, -56, 1, 0)
+    end
+    titleLbl.Parent = titleBar
+
+    local collapseBtn = Instance.new("TextButton")
+    collapseBtn.BackgroundTransparency = 1
+    collapseBtn.Position = UDim2.new(1, -44, 0, 0)
+    collapseBtn.Size = UDim2.new(0, 20, 1, 0)
+    collapseBtn.Font = Enum.Font.RobotoMono
+    collapseBtn.Text = "-"
+    collapseBtn.TextColor3 = theme.SubText
+    collapseBtn.TextSize = 14
+    collapseBtn.Parent = titleBar
+
+    local closeBtn = Instance.new("TextButton")
+    closeBtn.BackgroundTransparency = 1
+    closeBtn.Position = UDim2.new(1, -20, 0, 0)
+    closeBtn.Size = UDim2.new(0, 20, 1, 0)
+    closeBtn.Font = Enum.Font.RobotoMono
+    closeBtn.Text = "×"
+    closeBtn.TextColor3 = theme.SubText
+    closeBtn.TextSize = 16
+    closeBtn.Parent = titleBar
+
+    local body = Instance.new("Frame")
+    body.BackgroundColor3 = theme.WindowBg
+    body.Position = UDim2.new(0, 0, 0, 23)
+    body.Size = UDim2.new(1, 0, 1, -23)
+    body.ClipsDescendants = true
+    body.Parent = frame
+    applyCorner(body, 2)
+    applyBorder(body, theme.Border)
+
+    local resizer
+    if resizable then
+        resizer = Instance.new("TextButton")
+        resizer.BackgroundTransparency = 1
+        resizer.Size = UDim2.new(0, 12, 0, 12)
+        resizer.Position = UDim2.new(1, -12, 1, -12)
+        resizer.Text = "◢"
+        resizer.TextColor3 = theme.SubText
+        resizer.TextSize = 10
+        resizer.ZIndex = 10
+        resizer.Parent = body
+
+        local resizing, resizeStart, startSize = false, nil, nil
+        resizer.InputBegan:Connect(function(i)
+            if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
+                resizing, resizeStart, startSize = true, i.Position, frame.Size
+            end
+        end)
+        local endConn = UserInputService.InputEnded:Connect(function(i)
+            if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
+                resizing = false
+                if onResize then onResize(frame.Size) end
+            end
+        end)
+        local changeConn = UserInputService.InputChanged:Connect(function(i)
+            if not resizing then return end
+            if i.UserInputType ~= Enum.UserInputType.MouseMovement and i.UserInputType ~= Enum.UserInputType.Touch then return end
+            local d = i.Position - resizeStart
+            frame.Size = UDim2.new(0, math.max(200, startSize.X.Offset + d.X), 0, math.max(100, startSize.Y.Offset + d.Y))
+        end)
+        frame.Destroying:Connect(function() endConn:Disconnect(); changeConn:Disconnect() end)
+    end
+
+    local collapsed = false
+    collapseBtn.MouseButton1Click:Connect(function()
+        collapsed = not collapsed
+        body.Visible = not collapsed
+        collapseBtn.Text = collapsed and "+" or "-"
+    end)
+
+    local destroyed = false
+    closeBtn.MouseButton1Click:Connect(function()
+        if destroyed then return end
+        if onClose then pcall(onClose) end
+    end)
+
+    if draggable then
+        local dragging, dragInput, dragStart, startPos
+        titleBar.InputBegan:Connect(function(i)
+            if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
+                dragging, dragStart, startPos = true, i.Position, frame.Position
+                i.Changed:Connect(function()
+                    if i.UserInputState == Enum.UserInputState.End then
+                        dragging = false
+                        if onDragEnd then onDragEnd(frame.Position) end
+                    end
+                end)
+            end
+        end)
+        titleBar.InputChanged:Connect(function(i)
+            if i.UserInputType == Enum.UserInputType.MouseMovement or i.UserInputType == Enum.UserInputType.Touch then
+                dragInput = i
+            end
+        end)
+        local dragConn = UserInputService.InputChanged:Connect(function(i)
+            if i == dragInput and dragging then
+                local d = i.Position - dragStart
+                frame.Position = UDim2.new(
+                    startPos.X.Scale, startPos.X.Offset + d.X,
+                    startPos.Y.Scale, startPos.Y.Offset + d.Y
+                )
+            end
+        end)
+        frame.Destroying:Connect(function() dragConn:Disconnect() end)
+    end
+
+    local api = {}
+    function api:GetFrame() return frame end
+    function api:GetBody() return body end
+    function api:GetTitleBar() return titleBar end
+    function api:GetTitleLabel() return titleLbl end
+    function api:GetScreen() return screen end
+    function api:SetTitle(t) titleLbl.Text = tostring(t) end
+    function api:SetVisible(v) frame.Visible = v end
+    function api:IsVisible() return frame.Visible end
+    function api:SetPosition(p) frame.Position = p end
+    function api:GetPosition() return frame.Position end
+    function api:SetSize(s) frame.Size = s end
+    function api:GetSize() return frame.Size end
+    function api:Destroy()
+        if destroyed then return end
+        destroyed = true
+        screen:Destroy()
+    end
+
+    return api
+end
+
+
 
 -- ════════════════════════════════════════════════════════════════════════════
 --  Axiom.new
@@ -5342,6 +5584,12 @@ function Axiom:Destroy()
     if self._notificationGui then pcall(function() self._notificationGui:Destroy() end) end
     if self._keySystemGui then pcall(function() self._keySystemGui:Destroy() end) end
     if tooltipGui then pcall(function() tooltipGui:Destroy() end); tooltipGui = nil end
+  if self._targetWindows then
+      for _, tw in ipairs(self._targetWindows) do
+          pcall(function() tw:Destroy() end)
+      end
+      self._targetWindows = nil
+  end
     if self._screen then pcall(function() self._screen:Destroy() end) end
 end
 
@@ -5451,6 +5699,1457 @@ do
         end
         return result
     end
+end
+
+-- ════════════════════════════════════════════════════════════════════════════
+--  AddRadioButton  (grouped mutual exclusion)
+-- ════════════════════════════════════════════════════════════════════════════
+function TabComponent:AddRadioButton(options)
+    options = options or {}
+    local theme = getTheme(self)
+
+    local text     = options.Text or "Radio"
+    local group    = options.Group or "__default_radio"
+    local default  = options.Default or false
+    local callback = options.Callback
+    local tooltip  = options.Tooltip
+
+    local win = self._window
+    if not win._radioGroups then win._radioGroups = {} end
+    if not win._radioGroups[group] then win._radioGroups[group] = {} end
+    local groupList = win._radioGroups[group]
+
+    local currentCallback = callback
+    local currentEnabled = true
+    local selected = default
+
+    local row = Instance.new("TextButton")
+    row.BackgroundColor3 = options.Color or theme.FrameBg
+    if options.Color then warnCustomColor(self, "RadioButton") end
+    row.Size = UDim2.new(1, 0, 0, 24)
+    row.LayoutOrder = self:_nextOrder()
+    row.Text = ""
+    row.Parent = self._page
+    applyCorner(row, 2)
+    applyBorder(row, theme.Border)
+
+    local circle = Instance.new("Frame")
+    circle.BackgroundColor3 = selected and theme.CheckOn or theme.CheckOff
+    circle.Position = UDim2.new(0, 4, 0.5, -8)
+    circle.Size = UDim2.new(0, 16, 0, 16)
+    circle.Parent = row
+    local cc = Instance.new("UICorner"); cc.CornerRadius = UDim.new(1, 0); cc.Parent = circle
+    applyBorder(circle, theme.Accent)
+
+    local dotInner = Instance.new("Frame")
+    dotInner.AnchorPoint = Vector2.new(0.5, 0.5)
+    dotInner.Position = UDim2.new(0.5, 0, 0.5, 0)
+    dotInner.Size = selected and UDim2.new(0, 6, 0, 6) or UDim2.new(0, 0, 0, 0)
+    dotInner.BackgroundColor3 = theme.Text
+    dotInner.BorderSizePixel = 0
+    dotInner.Parent = circle
+    local dic = Instance.new("UICorner"); dic.CornerRadius = UDim.new(1, 0); dic.Parent = dotInner
+
+    local lbl = Instance.new("TextLabel")
+    lbl.BackgroundTransparency = 1
+    lbl.Position = UDim2.new(0, 24, 0, 0)
+    lbl.Size = UDim2.new(1, -24, 1, 0)
+    lbl.Font = Enum.Font.RobotoMono
+    lbl.Text = text
+    lbl.TextColor3 = theme.Text
+    lbl.TextSize = 13
+    lbl.TextXAlignment = Enum.TextXAlignment.Left
+    lbl.Parent = row
+
+    local obj = {}
+    local function selectThis(fireCb)
+        selected = true
+        dotInner.Size = UDim2.new(0, 6, 0, 6)
+        circle.BackgroundColor3 = theme.CheckOn
+        if fireCb then safeCall(currentCallback, true) end
+    end
+    local function deselectThis()
+        selected = false
+        dotInner.Size = UDim2.new(0, 0, 0, 0)
+        circle.BackgroundColor3 = theme.CheckOff
+    end
+
+    row.MouseEnter:Connect(function()
+        if currentEnabled then row.BackgroundColor3 = options.Color and lightenColor(options.Color) or theme.FrameBgHover end
+    end)
+    row.MouseLeave:Connect(function() row.BackgroundColor3 = options.Color or theme.FrameBg end)
+
+    row.MouseButton1Click:Connect(function()
+        if not currentEnabled or selected then return end
+        for _, other in ipairs(groupList) do
+            if other ~= obj then other:_deselect() end
+        end
+        selectThis(true)
+    end)
+
+    obj._deselect = deselectThis
+    obj._select   = selectThis
+
+    function obj:GetValue() return selected end
+    function obj:SetValue(v)
+        if v and not selected then
+            for _, other in ipairs(groupList) do
+                if other ~= obj then other:_deselect() end
+            end
+            selectThis(true)
+        elseif not v then deselectThis() end
+    end
+    function obj:SetText(t) lbl.Text = t end
+    function obj:GetText() return lbl.Text end
+    function obj:SetCallback(cb) currentCallback = cb end
+    function obj:SetEnabled(state)
+        currentEnabled = state
+        row.Active = state
+        if state then
+            row.BackgroundColor3 = options.Color or theme.FrameBg
+            lbl.TextColor3 = theme.Text
+        else
+            row.BackgroundColor3 = disabledColor(options.Color or theme.FrameBg)
+            lbl.TextColor3 = disabledColor(theme.Text)
+        end
+    end
+    function obj:IsEnabled() return currentEnabled end
+    function obj:Destroy()
+        for i, other in ipairs(groupList) do
+            if other == obj then table.remove(groupList, i); break end
+        end
+        row:Destroy()
+    end
+    function obj:GetInstance() return row end
+
+    if tooltip then attachTooltip(row, tooltip, self._window) end
+    if self._window then self._window:_registerSearch(row, text) end
+
+    table.insert(groupList, obj)
+    if default then selectThis(false) end
+
+    local key = options.StateKey or self._window:_autoStateKey("radio", group .. "::" .. text)
+    self._window:_registerState(key,
+        function() return selected end,
+        function(v) obj:SetValue(v) end
+    )
+
+    return obj
+end
+
+-- ════════════════════════════════════════════════════════════════════════════
+--  AddSelectable  (full-width row, stays highlighted when selected)
+-- ════════════════════════════════════════════════════════════════════════════
+function TabComponent:AddSelectable(options)
+    options = options or {}
+    local theme = getTheme(self)
+
+    local text     = options.Text or "Item"
+    local group    = options.Group   -- optional: mutual exclusion group
+    local default  = options.Default or false
+    local callback = options.Callback
+    local onRight  = options.OnRightClick
+    local height   = options.Height or 22
+    local tooltip  = options.Tooltip
+
+    local win = self._window
+    if group then
+        if not win._selectableGroups then win._selectableGroups = {} end
+        if not win._selectableGroups[group] then win._selectableGroups[group] = {} end
+    end
+    local groupList = group and win._selectableGroups[group] or nil
+
+    local currentCallback = callback
+    local currentEnabled = true
+    local selected = default
+
+    local row = Instance.new("TextButton")
+    row.BackgroundColor3 = options.Color or theme.FrameBg
+    if options.Color then warnCustomColor(self, "Selectable") end
+    row.Size = UDim2.new(1, 0, 0, height)
+    row.LayoutOrder = self:_nextOrder()
+    row.Font = Enum.Font.RobotoMono
+    row.Text = ""
+    row.Parent = self._page
+    applyCorner(row, 2)
+    applyBorder(row, theme.Border)
+
+    if selected then row.BackgroundColor3 = theme.TabActive end
+
+    local lbl = Instance.new("TextLabel")
+    lbl.BackgroundTransparency = 1
+    lbl.Position = UDim2.new(0, 6, 0, 0)
+    lbl.Size = UDim2.new(1, -12, 1, 0)
+    lbl.Font = Enum.Font.RobotoMono
+    lbl.Text = text
+    lbl.TextColor3 = selected and theme.TabActiveText or theme.Text
+    lbl.TextSize = 13
+    lbl.TextXAlignment = Enum.TextXAlignment.Left
+    lbl.TextTruncate = Enum.TextTruncate.AtEnd
+    lbl.Parent = row
+
+    local obj = {}
+    local function setSelected(v, fire)
+        selected = v
+        row.BackgroundColor3 = v and theme.TabActive or (options.Color or theme.FrameBg)
+        lbl.TextColor3 = v and theme.TabActiveText or theme.Text
+        if fire then safeCall(currentCallback, v, obj) end
+    end
+
+    row.MouseEnter:Connect(function()
+        if currentEnabled and not selected then
+            row.BackgroundColor3 = options.Color and lightenColor(options.Color) or theme.FrameBgHover
+        end
+    end)
+    row.MouseLeave:Connect(function()
+        row.BackgroundColor3 = selected and theme.TabActive or (options.Color or theme.FrameBg)
+    end)
+
+    row.MouseButton1Click:Connect(function()
+        if not currentEnabled then return end
+        if groupList then
+            for _, other in ipairs(groupList) do
+                if other ~= obj then other:_set(false, true) end
+            end
+        end
+        setSelected(true, true)
+    end)
+
+    if onRight then
+        row.MouseButton2Click:Connect(function()
+            if currentEnabled then safeCall(onRight, obj) end
+        end)
+    end
+
+    obj._set = setSelected
+
+    function obj:GetValue() return selected end
+    function obj:SetValue(v)
+        if groupList and v then
+            for _, other in ipairs(groupList) do
+                if other ~= obj then other:_set(false, false) end
+            end
+        end
+        setSelected(v, true)
+    end
+    function obj:SetText(t) lbl.Text = t end
+    function obj:GetText() return lbl.Text end
+    function obj:SetCallback(cb) currentCallback = cb end
+    function obj:SetEnabled(state)
+        currentEnabled = state
+        row.Active = state
+        if not state then row.BackgroundColor3 = disabledColor(options.Color or theme.FrameBg) end
+    end
+    function obj:IsEnabled() return currentEnabled end
+    function obj:Destroy()
+        if groupList then
+            for i, other in ipairs(groupList) do
+                if other == obj then table.remove(groupList, i); break end
+            end
+        end
+        row:Destroy()
+    end
+    function obj:GetInstance() return row end
+
+    if tooltip then attachTooltip(row, tooltip, self._window) end
+    if self._window then self._window:_registerSearch(row, text) end
+    if groupList then table.insert(groupList, obj) end
+
+    return obj
+end
+
+-- ════════════════════════════════════════════════════════════════════════════
+--  AddDummy  (fixed-size spacer)
+-- ════════════════════════════════════════════════════════════════════════════
+function TabComponent:AddDummy(options)
+    options = options or {}
+    local size = options.Size or UDim2.new(1, 0, 0, 8)
+    local d = Instance.new("Frame")
+    d.BackgroundTransparency = 1
+    d.Size = size
+    d.LayoutOrder = self:_nextOrder()
+    d.Parent = self._page
+    return {
+        GetInstance = function() return d end,
+        SetSize     = function(s) d.Size = s end,
+        Destroy     = function() d:Destroy() end,
+    }
+end
+
+-- ════════════════════════════════════════════════════════════════════════════
+--  AddDragFloat / AddDragInt  (click-drag to scrub)
+-- ════════════════════════════════════════════════════════════════════════════
+function TabComponent:AddDragFloat(options)
+    options = options or {}
+    local theme = getTheme(self)
+
+    local text     = options.Text or "Value"
+    local min      = options.Min or 0
+    local max      = options.Max or 100
+    local default  = options.Default or min
+    local decimals = options.Decimals or 2
+    local speed    = options.Speed or 0.1
+    local callback = options.Callback
+    local tooltip  = options.Tooltip
+    local isInt    = options.Int or false
+
+    local currentCallback = callback
+    local currentEnabled = true
+    local value = math.clamp(default, min, max)
+
+    local container = Instance.new("Frame")
+    container.BackgroundTransparency = 1
+    container.Size = UDim2.new(1, 0, 0, 24)
+    container.LayoutOrder = self:_nextOrder()
+    container.Parent = self._page
+
+    local label = Instance.new("TextLabel")
+    label.BackgroundTransparency = 1
+    label.Position = UDim2.new(0, 4, 0, 0)
+    label.Size = UDim2.new(1, -90, 1, 0)
+    label.Font = Enum.Font.RobotoMono
+    label.Text = text
+    label.TextColor3 = theme.Text
+    label.TextSize = 13
+    label.TextXAlignment = Enum.TextXAlignment.Left
+    label.Parent = container
+
+    local inputBtn = Instance.new("TextButton")
+    inputBtn.BackgroundColor3 = options.Color or theme.FrameBg
+    if options.Color then warnCustomColor(self, "DragFloat") end
+    inputBtn.Position = UDim2.new(1, -84, 0, 0)
+    inputBtn.Size = UDim2.new(0, 84, 1, 0)
+    inputBtn.Font = Enum.Font.RobotoMono
+    inputBtn.Text = isInt and tostring(math.floor(value + 0.5)) or string.format("%." .. decimals .. "f", value)
+    inputBtn.TextColor3 = theme.Text
+    inputBtn.TextSize = 13
+    inputBtn.Parent = container
+    applyCorner(inputBtn, 2)
+    applyBorder(inputBtn, theme.Border)
+
+    local function format()
+        return isInt and tostring(math.floor(value + 0.5)) or string.format("%." .. decimals .. "f", value)
+    end
+
+    local function refresh()
+        inputBtn.Text = format()
+    end
+
+    local dragging = false
+    local dragStart = nil
+    local valueAtDragStart = nil
+    local moved = false
+
+    inputBtn.InputBegan:Connect(function(i)
+        if not currentEnabled then return end
+        if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
+            dragging = true
+            dragStart = i.Position
+            valueAtDragStart = value
+            moved = false
+        end
+    end)
+
+    local endConn = UserInputService.InputEnded:Connect(function(i)
+        if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
+            if dragging and not moved then
+                inputBtn.TextEditable = true
+                -- Trigger focus for exact entry
+            end
+            dragging = false
+            inputBtn.TextEditable = false
+        end
+    end)
+
+    local changeConn = UserInputService.InputChanged:Connect(function(i)
+        if not dragging then return end
+        if i.UserInputType ~= Enum.UserInputType.MouseMovement and i.UserInputType ~= Enum.UserInputType.Touch then return end
+        local d = i.Position - dragStart
+        if math.abs(d.X) > 2 then moved = true end
+        local delta = d.X * speed
+        value = math.clamp(valueAtDragStart + delta, min, max)
+        if isInt then value = math.floor(value + 0.5) end
+        refresh()
+        safeCall(currentCallback, value)
+    end)
+
+    inputBtn.FocusLost:Connect(function()
+        local n = tonumber(inputBtn.Text)
+        if n then
+            value = math.clamp(n, min, max)
+            if isInt then value = math.floor(value + 0.5) end
+            refresh()
+            safeCall(currentCallback, value)
+        else
+            refresh()
+        end
+    end)
+
+    if tooltip then attachTooltip(inputBtn, tooltip, self._window) end
+    if self._window then self._window:_registerSearch(container, text) end
+
+    local obj = {}
+    function obj:GetValue() return value end
+    function obj:SetValue(v)
+        value = math.clamp(v, min, max)
+        if isInt then value = math.floor(value + 0.5) end
+        refresh()
+        safeCall(currentCallback, value)
+    end
+    function obj:SetCallback(cb) currentCallback = cb end
+    function obj:SetEnabled(s)
+        currentEnabled = s
+        inputBtn.Active = s
+        inputBtn.BackgroundColor3 = s and (options.Color or theme.FrameBg) or disabledColor(options.Color or theme.FrameBg)
+        inputBtn.TextColor3 = s and theme.Text or disabledColor(theme.Text)
+    end
+    function obj:IsEnabled() return currentEnabled end
+    function obj:Destroy()
+        endConn:Disconnect(); changeConn:Disconnect()
+        container:Destroy()
+    end
+    function obj:GetInstance() return container end
+
+    local key = options.StateKey or self._window:_autoStateKey("drag", text)
+    self._window:_registerState(key, function() return value end, function(v) obj:SetValue(v) end)
+    return obj
+end
+
+function TabComponent:AddDragInt(options)
+    options = options or {}
+    options.Int = true
+    options.Decimals = 0
+    return self:AddDragFloat(options)
+end
+
+-- ════════════════════════════════════════════════════════════════════════════
+--  AddPlayerList
+-- ════════════════════════════════════════════════════════════════════════════
+function TabComponent:AddPlayerList(options)
+    options = options or {}
+    local theme = getTheme(self)
+
+    local callback    = options.Callback
+    local excludeLocal = options.ExcludeLocal ~= false
+    local height      = options.Height or 150
+    local includeOthers = options.IncludeOtherTeams or true
+
+    local currentCallback = callback
+    local currentEnabled = true
+    local selectedName = nil
+    local rowRegistry = {}
+    local thumbCache = {}
+    local conns = {}
+
+    local container = Instance.new("Frame")
+    container.BackgroundColor3 = theme.FrameBg
+    container.Size = UDim2.new(1, 0, 0, height)
+    container.LayoutOrder = self:_nextOrder()
+    container.ClipsDescendants = true
+    container.Parent = self._page
+    applyCorner(container, 2)
+    applyBorder(container, theme.Border)
+
+    local scroll = Instance.new("ScrollingFrame")
+    scroll.BackgroundTransparency = 1
+    scroll.Size = UDim2.new(1, 0, 1, 0)
+    scroll.ScrollBarThickness = 4
+    scroll.ScrollBarImageColor3 = theme.Accent
+    scroll.CanvasSize = UDim2.new(0, 0, 0, 0)
+    scroll.Parent = container
+
+    local layout = Instance.new("UIListLayout")
+    layout.SortOrder = Enum.SortOrder.LayoutOrder
+    layout.Parent = scroll
+
+    local selectedObj = nil
+
+    local function rowSelected(name, obj)
+        if selectedObj and selectedObj ~= obj then selectedObj:_set(false, false) end
+        selectedObj = obj
+        selectedName = name
+        safeCall(currentCallback, name, obj and obj._player)
+    end
+
+    local function makeRow(player)
+        local row = Instance.new("TextButton")
+        row.BackgroundColor3 = theme.FrameBg
+        row.Size = UDim2.new(1, 0, 0, 40)
+        row.Text = ""
+        row.Parent = scroll
+        applyBorder(row, theme.Border)
+
+        local thumb = Instance.new("ImageLabel")
+        thumb.BackgroundColor3 = theme.TabNormal
+        thumb.Position = UDim2.new(0, 4, 0.5, -16)
+        thumb.Size = UDim2.new(0, 32, 0, 32)
+        thumb.Image = ""
+        thumb.Parent = row
+        applyCorner(thumb, 2)
+        applyBorder(thumb, theme.Border)
+
+        local lbl = Instance.new("TextLabel")
+        lbl.BackgroundTransparency = 1
+        lbl.Position = UDim2.new(0, 42, 0, 0)
+        lbl.Size = UDim2.new(1, -46, 0, 20)
+        lbl.Font = Enum.Font.RobotoMono
+        lbl.Text = player.Name
+        lbl.TextColor3 = theme.Text
+        lbl.TextSize = 13
+        lbl.TextXAlignment = Enum.TextXAlignment.Left
+        lbl.TextTruncate = Enum.TextTruncate.AtEnd
+        lbl.Parent = row
+
+        local subLbl = Instance.new("TextLabel")
+        subLbl.BackgroundTransparency = 1
+        subLbl.Position = UDim2.new(0, 42, 0, 20)
+        subLbl.Size = UDim2.new(1, -46, 0, 16)
+        subLbl.Font = Enum.Font.RobotoMono
+        subLbl.Text = "Display: " .. player.DisplayName
+        subLbl.TextColor3 = theme.SubText
+        subLbl.TextSize = 11
+        subLbl.TextXAlignment = Enum.TextXAlignment.Left
+        subLbl.TextTruncate = Enum.TextTruncate.AtEnd
+        subLbl.Parent = row
+
+        -- Async thumbnail
+        if thumbCache[player.UserId] then
+            thumb.Image = thumbCache[player.UserId]
+        else
+            task.spawn(function()
+                local ok, url = pcall(function()
+                    return Players:GetUserThumbnailAsync(player.UserId, Enum.ThumbnailType.HeadShot, Enum.ThumbnailSize.Size48x48)
+                end)
+                if ok and url and thumb.Parent then
+                    thumbCache[player.UserId] = url
+                    thumb.Image = url
+                end
+            end)
+        end
+
+        local obj = { _player = player }
+        function obj:_set(sel, fire)
+            row.BackgroundColor3 = sel and theme.TabActive or theme.FrameBg
+            lbl.TextColor3 = sel and theme.TabActiveText or theme.Text
+            if sel and fire then rowSelected(player.Name, obj) end
+        end
+
+        row.MouseEnter:Connect(function()
+            if not selectedObj or selectedObj ~= obj then row.BackgroundColor3 = theme.FrameBgHover end
+        end)
+        row.MouseLeave:Connect(function()
+            if not selectedObj or selectedObj ~= obj then row.BackgroundColor3 = theme.FrameBg end
+        end)
+        row.MouseButton1Click:Connect(function()
+            if not currentEnabled then return end
+            rowSelected(player.Name, obj)
+            obj:_set(true, false)
+        end)
+
+        table.insert(rowRegistry, { row = row, player = player, obj = obj })
+        return obj
+    end
+
+    local function rebuild()
+        for _, r in ipairs(rowRegistry) do r.row:Destroy() end
+        rowRegistry = {}
+        selectedObj = nil
+        local count = 0
+        for _, p in ipairs(Players:GetPlayers()) do
+            local include = true
+            if excludeLocal and p == Players.LocalPlayer then include = false end
+            if include then
+                makeRow(p)
+                count = count + 1
+            end
+        end
+        layout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function() end)
+        task.defer(function()
+            scroll.CanvasSize = UDim2.new(0, 0, 0, layout.AbsoluteContentSize.Y)
+        end)
+    end
+
+    conns.added = Players.PlayerAdded:Connect(function() rebuild() end)
+    conns.removing = Players.PlayerRemoving:Connect(function(p)
+        if selectedName == p.Name then
+            selectedName = nil
+            if currentCallback then safeCall(currentCallback, nil) end
+        end
+        task.defer(rebuild)
+    end)
+
+    rebuild()
+
+    if self._window then self._window:_registerSearch(container, options.Text or "players") end
+
+    local obj = {}
+    function obj:GetValue() return selectedName end
+    function obj:SetValue(name)
+        for _, r in ipairs(rowRegistry) do
+            if r.player.Name == name then
+                r.obj:_set(true, true)
+                return
+            end
+        end
+    end
+    function obj:Refresh() rebuild() end
+    function obj:SetCallback(cb) currentCallback = cb end
+    function obj:SetEnabled(s)
+        currentEnabled = s
+        container.Active = s
+        container.BackgroundColor3 = s and theme.FrameBg or disabledColor(theme.FrameBg)
+    end
+    function obj:IsEnabled() return currentEnabled end
+    function obj:Destroy()
+        for _, c in pairs(conns) do pcall(function() c:Disconnect() end) end
+        container:Destroy()
+    end
+    function obj:GetInstance() return container end
+
+    local key = options.StateKey or self._window:_autoStateKey("playerlist", options.Text or "players")
+    self._window:_registerState(key, function() return selectedName end, function(v) obj:SetValue(v) end)
+    return obj
+end
+
+-- ════════════════════════════════════════════════════════════════════════════
+--  AddImageButton  (icon-driven row button)
+-- ════════════════════════════════════════════════════════════════════════════
+function TabComponent:AddImageButton(options)
+    options = options or {}
+    local theme = getTheme(self)
+
+    local imageId = options.Image
+    if type(imageId) == "number" then imageId = "rbxassetid://" .. imageId end
+    local text     = options.Text
+    local callback = options.Callback
+    local tooltip  = options.Tooltip
+
+    local currentCallback = callback
+    local currentEnabled = true
+
+    local btn = Instance.new("TextButton")
+    btn.BackgroundColor3 = options.Color or theme.FrameBg
+    if options.Color then warnCustomColor(self, "ImageButton") end
+    btn.Size = UDim2.new(1, 0, 0, 24)
+    btn.LayoutOrder = self:_nextOrder()
+    btn.Text = ""
+    btn.Parent = self._page
+    applyCorner(btn, 2)
+    applyBorder(btn, theme.Border)
+
+    local img = Instance.new("ImageLabel")
+    img.BackgroundTransparency = 1
+    img.Size = UDim2.new(0, 18, 0, 18)
+    img.Position = UDim2.new(0, 4, 0.5, -9)
+    img.Image = imageId or ""
+    img.Parent = btn
+
+    local lbl
+    if text then
+        lbl = Instance.new("TextLabel")
+        lbl.BackgroundTransparency = 1
+        lbl.Position = UDim2.new(0, 26, 0, 0)
+        lbl.Size = UDim2.new(1, -30, 1, 0)
+        lbl.Font = Enum.Font.RobotoMono
+        lbl.Text = text
+        lbl.TextColor3 = theme.Text
+        lbl.TextSize = 13
+        lbl.TextXAlignment = Enum.TextXAlignment.Left
+        lbl.Parent = btn
+    end
+
+    btn.MouseEnter:Connect(function()
+        if currentEnabled then btn.BackgroundColor3 = options.Color and lightenColor(options.Color) or theme.FrameBgHover end
+    end)
+    btn.MouseLeave:Connect(function() btn.BackgroundColor3 = options.Color or theme.FrameBg end)
+    btn.MouseButton1Click:Connect(function()
+        if not currentEnabled then return end
+        TweenService:Create(btn, TWEEN_FAST, { BackgroundColor3 = theme.Accent }):Play()
+        task.delay(0.1, function() btn.BackgroundColor3 = options.Color or theme.FrameBg end)
+        safeCall(currentCallback)
+    end)
+
+    if tooltip then attachTooltip(btn, tooltip, self._window) end
+    if self._window then self._window:_registerSearch(btn, text or "") end
+
+    local obj = {}
+    function obj:SetImage(id)
+        if type(id) == "number" then id = "rbxassetid://" .. id end
+        img.Image = id
+    end
+    function obj:SetText(t)
+        if lbl then lbl.Text = t end
+    end
+    function obj:SetCallback(cb) currentCallback = cb end
+    function obj:SetEnabled(s)
+        currentEnabled = s
+        btn.Active = s
+        btn.BackgroundColor3 = s and (options.Color or theme.FrameBg) or disabledColor(options.Color or theme.FrameBg)
+    end
+    function obj:IsEnabled() return currentEnabled end
+    function obj:Destroy() btn:Destroy() end
+    function obj:GetInstance() return btn end
+    return obj
+end
+
+-- ════════════════════════════════════════════════════════════════════════════
+--  AddVSlider  (vertical slider)
+-- ════════════════════════════════════════════════════════════════════════════
+function TabComponent:AddVSlider(options)
+    options = options or {}
+    local theme = getTheme(self)
+
+    local text     = options.Text or "V"
+    local min      = options.Min or 0
+    local max      = options.Max or 100
+    local default  = options.Default or min
+    local height   = options.Height or 100
+    local callback = options.Callback
+    local tooltip  = options.Tooltip
+
+    local currentCallback = callback
+    local currentEnabled = true
+    local value = math.clamp(default, min, max)
+
+    local container = Instance.new("Frame")
+    container.BackgroundTransparency = 1
+    container.Size = UDim2.new(0, 24, 0, height)
+    container.LayoutOrder = self:_nextOrder()
+    container.Parent = self._page
+
+    local track = Instance.new("TextButton")
+    track.BackgroundColor3 = options.Color or theme.SliderTrack
+    if options.Color then warnCustomColor(self, "VSlider") end
+    track.Size = UDim2.new(1, 0, 1, 0)
+    track.Text = ""
+    track.Parent = container
+    applyCorner(track, 2)
+    applyBorder(track, theme.Border)
+
+    local fill = Instance.new("Frame")
+    fill.BackgroundColor3 = theme.SliderFill
+    fill.AnchorPoint = Vector2.new(0, 1)
+    fill.Position = UDim2.new(0, 0, 1, 0)
+    fill.Size = UDim2.new(1, 0, (value - min) / (max - min), 0)
+    fill.Parent = track
+    applyCorner(fill, 2)
+
+    local function updateFromInput(input)
+        if not currentEnabled then return end
+        local relY = math.clamp(1 - (input.Position.Y - track.AbsolutePosition.Y) / track.AbsoluteSize.Y, 0, 1)
+        value = min + (max - min) * relY
+        fill.Size = UDim2.new(1, 0, relY, 0)
+        safeCall(currentCallback, value)
+    end
+
+    local dragging = false
+    track.InputBegan:Connect(function(i)
+        if not currentEnabled then return end
+        if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
+            dragging = true
+            updateFromInput(i)
+        end
+    end)
+    local endConn = UserInputService.InputEnded:Connect(function(i)
+        if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then dragging = false end
+    end)
+    local changeConn = UserInputService.InputChanged:Connect(function(i)
+        if dragging and (i.UserInputType == Enum.UserInputType.MouseMovement or i.UserInputType == Enum.UserInputType.Touch) then
+            updateFromInput(i)
+        end
+    end)
+
+    if tooltip then attachTooltip(track, tooltip, self._window) end
+
+    local obj = {}
+    function obj:GetValue() return value end
+    function obj:SetValue(v)
+        value = math.clamp(v, min, max)
+        local rel = (value - min) / (max - min)
+        fill.Size = UDim2.new(1, 0, rel, 0)
+        safeCall(currentCallback, value)
+    end
+    function obj:SetCallback(cb) currentCallback = cb end
+    function obj:SetEnabled(s)
+        currentEnabled = s
+        track.Active = s
+        track.BackgroundColor3 = s and (options.Color or theme.SliderTrack) or disabledColor(options.Color or theme.SliderTrack)
+    end
+    function obj:IsEnabled() return currentEnabled end
+    function obj:Destroy()
+        endConn:Disconnect(); changeConn:Disconnect()
+        container:Destroy()
+    end
+    function obj:GetInstance() return container end
+
+    local key = options.StateKey or self._window:_autoStateKey("vslider", text)
+    self._window:_registerState(key, function() return value end, function(v) obj:SetValue(v) end)
+    return obj
+end
+
+-- ════════════════════════════════════════════════════════════════════════════
+--  AddMenuBar
+-- ════════════════════════════════════════════════════════════════════════════
+function TabComponent:AddMenuBar(options)
+    options = options or {}
+    local theme = getTheme(self)
+    local win = self._window
+
+    local bar = Instance.new("Frame")
+    bar.BackgroundColor3 = theme.FrameBg
+    bar.Size = UDim2.new(1, 0, 0, 22)
+    bar.LayoutOrder = self:_nextOrder()
+    bar.Parent = self._page
+    applyBorder(bar, theme.Border)
+
+    local barLayout = Instance.new("UIListLayout")
+    barLayout.FillDirection = Enum.FillDirection.Horizontal
+    barLayout.SortOrder = Enum.SortOrder.LayoutOrder
+    barLayout.Parent = bar
+
+    local openMenu = nil
+    local submenuFrames = {}
+
+    local function closeAll()
+        for _, f in ipairs(submenuFrames) do
+            if f.Parent then f:Destroy() end
+        end
+        submenuFrames = {}
+        openMenu = nil
+    end
+
+    local function openSubmenu(btn, items)
+        if openMenu == btn then closeAll(); return end
+        closeAll()
+        openMenu = btn
+        local sub = Instance.new("Frame")
+        sub.BackgroundColor3 = theme.TabNormal
+        sub.ZIndex = 50
+        sub.ClipsDescendants = true
+        sub.Parent = win._mainFrame
+        applyCorner(sub, 2)
+        applyBorder(sub, theme.Border)
+
+        -- Position below button in main frame coords
+        local absBtn   = btn.AbsolutePosition
+        local absMain  = win._mainFrame.AbsolutePosition
+        sub.Position = UDim2.new(0, absBtn.X - absMain.X, 0, absBtn.Y - absMain.Y + btn.AbsoluteSize.Y)
+        local h = #items * 22 + 4
+        sub.Size = UDim2.new(0, 140, 0, h)
+
+        local layout = Instance.new("UIListLayout")
+        layout.SortOrder = Enum.SortOrder.LayoutOrder
+        layout.Parent = sub
+
+        for i, item in ipairs(items) do
+            local itemBtn = Instance.new("TextButton")
+            itemBtn.BackgroundTransparency = 1
+            itemBtn.Size = UDim2.new(1, 0, 0, 22)
+            itemBtn.Font = Enum.Font.RobotoMono
+            itemBtn.Text = " " .. item.Text
+            itemBtn.TextColor3 = theme.TabNormalText
+            itemBtn.TextSize = 12
+            itemBtn.TextXAlignment = Enum.TextXAlignment.Left
+            itemBtn.ZIndex = 51
+            itemBtn.LayoutOrder = i
+            itemBtn.Parent = sub
+            itemBtn.MouseEnter:Connect(function() itemBtn.BackgroundTransparency = 0.82 end)
+            itemBtn.MouseLeave:Connect(function() itemBtn.BackgroundTransparency = 1 end)
+            itemBtn.MouseButton1Click:Connect(function()
+                closeAll()
+                safeCall(item.Callback)
+            end)
+        end
+
+        table.insert(submenuFrames, sub)
+
+        -- Close on outside click
+        local closeConn
+        closeConn = UserInputService.InputBegan:Connect(function(i)
+            if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
+                local mx, my = i.Position.X, i.Position.Y
+                local subPos, subSize = sub.AbsolutePosition, sub.AbsoluteSize
+                local inside = mx >= subPos.X and mx <= subPos.X + subSize.X
+                            and my >= subPos.Y and my <= subPos.Y + subSize.Y
+                local btnPos, btnSize = btn.AbsolutePosition, btn.AbsoluteSize
+                local onBtn = mx >= btnPos.X and mx <= btnPos.X + btnSize.X
+                           and my >= btnPos.Y and my <= btnPos.Y + btnSize.Y
+                if not inside and not onBtn then
+                    closeAll()
+                    closeConn:Disconnect()
+                end
+            end
+        end)
+    end
+
+    for i, menuDef in ipairs(options.Menus or {}) do
+        local btn = Instance.new("TextButton")
+        btn.BackgroundTransparency = 1
+        btn.Size = UDim2.new(0, 60, 1, 0)
+        btn.Font = Enum.Font.RobotoMono
+        btn.Text = menuDef.Text or "Menu"
+        btn.TextColor3 = theme.Text
+        btn.TextSize = 12
+        btn.LayoutOrder = i
+        btn.Parent = bar
+        local sz = TextService:GetTextSize(menuDef.Text or "Menu", 12, Enum.Font.RobotoMono, Vector2.new(999, 22))
+        btn.Size = UDim2.new(0, sz.X + 16, 1, 0)
+        btn.MouseEnter:Connect(function() btn.BackgroundTransparency = 0.85 end)
+        btn.MouseLeave:Connect(function() btn.BackgroundTransparency = 1 end)
+        btn.MouseButton1Click:Connect(function()
+            openSubmenu(btn, menuDef.Items or {})
+        end)
+    end
+
+    local obj = { GetInstance = function() return bar end, Destroy = function() closeAll(); bar:Destroy() end }
+    return obj
+end
+
+-- ════════════════════════════════════════════════════════════════════════════
+--  Axiom:ShowContextMenu  (right-click / anchored menu)
+-- ════════════════════════════════════════════════════════════════════════════
+function Axiom:ShowContextMenu(position, items)
+    local theme = self._theme
+    if self._contextMenu and self._contextMenu.Parent then
+        self._contextMenu:Destroy()
+    end
+    local sub = Instance.new("Frame")
+    sub.BackgroundColor3 = theme.TabNormal
+    sub.ZIndex = 100
+    sub.ClipsDescendants = true
+    sub.Parent = self._mainFrame
+    applyCorner(sub, 2)
+    applyBorder(sub, theme.Border)
+    sub.Position = UDim2.new(0, position.X, 0, position.Y)
+    sub.Size = UDim2.new(0, 140, 0, #items * 22 + 4)
+    self._contextMenu = sub
+
+    local layout = Instance.new("UIListLayout")
+    layout.SortOrder = Enum.SortOrder.LayoutOrder
+    layout.Parent = sub
+
+    for i, item in ipairs(items) do
+        local btn = Instance.new("TextButton")
+        btn.BackgroundTransparency = 1
+        btn.Size = UDim2.new(1, 0, 0, 22)
+        btn.Font = Enum.Font.RobotoMono
+        btn.Text = " " .. (item.Text or "")
+        btn.TextColor3 = theme.TabNormalText
+        btn.TextSize = 12
+        btn.TextXAlignment = Enum.TextXAlignment.Left
+        btn.ZIndex = 101
+        btn.LayoutOrder = i
+        btn.Parent = sub
+        btn.MouseEnter:Connect(function() btn.BackgroundTransparency = 0.82 end)
+        btn.MouseLeave:Connect(function() btn.BackgroundTransparency = 1 end)
+        btn.MouseButton1Click:Connect(function()
+            sub:Destroy()
+            safeCall(item.Callback)
+        end)
+    end
+
+    local closeConn
+    closeConn = UserInputService.InputBegan:Connect(function(i)
+        if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
+            if sub.Parent then sub:Destroy() end
+            closeConn:Disconnect()
+        end
+    end)
+
+    return sub
+end
+
+-- ════════════════════════════════════════════════════════════════════════════
+--  Target Window
+-- ════════════════════════════════════════════════════════════════════════════
+local TARGET_STATUS_COLORS = {
+    empty     = Color3.fromRGB(180, 180, 180),
+    waiting   = Color3.fromRGB(215, 155, 0),
+    snapshot  = Color3.fromRGB(56, 101, 165),
+    live      = Color3.fromRGB(38, 175, 75),
+    destroyed = Color3.fromRGB(200, 48, 48),
+}
+
+function Axiom:CreateTargetWindow(options)
+    options = options or {}
+    local owner  = self
+    local theme  = self._theme
+    local title  = options.Title or "Target"
+    local stateKeyBase = options.StateKey or ("targetwin::" .. title)
+
+    local chrome = Axiom._Internal.CreateWindowChrome({
+        Theme     = theme,
+        Parent    = CoreGui,
+        Title     = title,
+        Icon      = options.Icon,
+        Position  = options.Position or UDim2.new(0.65, 0, 0.30, 0),
+        Size      = options.Size     or UDim2.new(0, 420, 0, 320),
+        Draggable = options.DragEnabled ~= false,
+        Resizable = options.Resizable  ~= false,
+        OnClose   = function() end,
+        OnDragEnd = function(pos)
+            owner:_registerStateSnapshot and owner:_registerStateSnapshot(stateKeyBase .. "::pos", {
+                pos.X.Scale, pos.X.Offset, pos.Y.Scale, pos.Y.Offset,
+            })
+            if owner._stateFilePath then pcall(function() owner:SaveState() end) end
+        end,
+        OnResize  = function(sz)
+            owner:_registerStateSnapshot and owner:_registerStateSnapshot(stateKeyBase .. "::size", {
+                sz.X.Scale, sz.X.Offset, sz.Y.Scale, sz.Y.Offset,
+            })
+            if owner._stateFilePath then pcall(function() owner:SaveState() end) end
+        end,
+    })
+
+    local body = chrome:GetBody()
+    local frame = chrome:GetFrame()
+
+    -- Tab bar inside body
+    local tabBar = Instance.new("Frame")
+    tabBar.BackgroundColor3 = theme.TabBarBg
+    tabBar.Size = UDim2.new(1, 0, 0, 26)
+    tabBar.Parent = body
+    applyBorder(tabBar, theme.Border)
+
+    local tabLayout = Instance.new("UIListLayout")
+    tabLayout.FillDirection = Enum.FillDirection.Horizontal
+    tabLayout.SortOrder = Enum.SortOrder.LayoutOrder
+    tabLayout.Parent = tabBar
+
+    local pageContainer = Instance.new("Frame")
+    pageContainer.BackgroundTransparency = 1
+    pageContainer.Position = UDim2.new(0, 0, 0, 26)
+    pageContainer.Size = UDim2.new(1, 0, 1, -26)
+    pageContainer.Parent = body
+
+    -- Persisted position/size (loaded or defaults)
+    local persisted = owner._stateRegistry and owner._stateRegistry[stateKeyBase .. "::pos"]
+    if persisted then
+        local ok, v = pcall(persisted.get)
+        if ok and type(v) == "table" and #v == 4 then
+            frame.Position = UDim2.new(v[1], v[2], v[3], v[4])
+        end
+    end
+    local persistedSize = owner._stateRegistry and owner._stateRegistry[stateKeyBase .. "::size"]
+    if persistedSize then
+        local ok, v = pcall(persistedSize.get)
+        if ok and type(v) == "table" and #v == 4 then
+            frame.Size = UDim2.new(v[1], v[2], v[3], v[4])
+        end
+    end
+
+    local tw = {
+        _owner      = owner,
+        _chrome     = chrome,
+        _frame      = frame,
+        _body       = body,
+        _tabBar     = tabBar,
+        _pageCont   = pageContainer,
+        _pages      = {},
+        _activeIdx  = nil,
+        _stateKey   = stateKeyBase,
+        _defaults   = {
+            FOV     = options.FOV or 30,
+            Padding = options.Padding or 1.3,
+            AutoRotate = options.AutoRotate or false,
+            RotationSpeed = options.RotationSpeed or 20,
+        },
+        _destroyed  = false,
+    }
+
+    -- Register state getters/setters
+    owner:_registerState(stateKeyBase .. "::pos",
+        function()
+            local p = frame.Position
+            return { p.X.Scale, p.X.Offset, p.Y.Scale, p.Y.Offset }
+        end,
+        function(v)
+            if type(v) == "table" and #v == 4 then
+                frame.Position = UDim2.new(v[1], v[2], v[3], v[4])
+            end
+        end
+    )
+    owner:_registerState(stateKeyBase .. "::size",
+        function()
+            local s = frame.Size
+            return { s.X.Scale, s.X.Offset, s.Y.Scale, s.Y.Offset }
+        end,
+        function(v)
+            if type(v) == "table" and #v == 4 then
+                frame.Size = UDim2.new(v[1], v[2], v[3], v[4])
+            end
+        end
+    )
+    owner:_registerState(stateKeyBase .. "::visible",
+        function() return frame.Visible end,
+        function(v) frame.Visible = v == true end
+    )
+
+    -- ── Page construction ─────────────────────────────────────────────────
+    local function makeTabButton(name)
+        local btn = Instance.new("TextButton")
+        btn.BackgroundColor3 = theme.TabNormal
+        btn.Size = UDim2.new(0, 0, 1, 0)
+        btn.Font = Enum.Font.RobotoMono
+        btn.Text = ""
+        btn.LayoutOrder = #tw._pages + 1
+        btn.Parent = tabBar
+        applyBorder(btn, theme.Border)
+
+        -- Status dot
+        local dot = Instance.new("Frame")
+        dot.Size = UDim2.new(0, 6, 0, 6)
+        dot.Position = UDim2.new(0, 6, 0.5, -3)
+        dot.BackgroundColor3 = TARGET_STATUS_COLORS.empty
+        dot.BorderSizePixel = 0
+        dot.Parent = btn
+        local dc = Instance.new("UICorner"); dc.CornerRadius = UDim.new(1, 0); dc.Parent = dot
+
+        local lbl = Instance.new("TextLabel")
+        lbl.BackgroundTransparency = 1
+        lbl.Font = Enum.Font.RobotoMono
+        lbl.Text = name
+        lbl.TextColor3 = theme.TabNormalText
+        lbl.TextSize = 13
+        lbl.TextXAlignment = Enum.TextXAlignment.Center
+        lbl.TextTruncate = Enum.TextTruncate.AtEnd
+        lbl.Position = UDim2.new(0, 14, 0, 0)
+        lbl.Size = UDim2.new(1, -18, 1, 0)
+        lbl.Parent = btn
+
+        local sz = TextService:GetTextSize(name, 13, Enum.Font.RobotoMono, Vector2.new(999, 26))
+        btn.Size = UDim2.new(0, sz.X + 32, 1, 0)
+        return btn, lbl, dot
+    end
+
+    local function updateStatusDot(page)
+        if not page._dot then return end
+        page._dot.BackgroundColor3 = TARGET_STATUS_COLORS[page._status] or TARGET_STATUS_COLORS.empty
+    end
+
+    local function setActivePage(page)
+        for _, p in ipairs(tw._pages) do
+            p._page.Visible = (p == page)
+            p._btn.BackgroundColor3 = (p == page) and theme.TabActive or theme.TabNormal
+            p._lbl.TextColor3 = (p == page) and theme.TabActiveText or theme.TabNormalText
+            -- Pause camera work on hidden pages
+            if p ~= page and p._hbConn then p._hbPaused = true end
+            if p == page then p._hbPaused = false end
+        end
+        tw._activePage = page
+        for i, p in ipairs(tw._pages) do
+            if p == page then tw._activeIdx = i; break end
+        end
+    end
+
+    local function buildPage(opts)
+        opts = opts or {}
+        local pageName = opts.Name or "Page"
+
+        local pageFrame = Instance.new("Frame")
+        pageFrame.BackgroundTransparency = 1
+        pageFrame.Size = UDim2.new(1, 0, 1, 0)
+        pageFrame.Visible = false
+        pageFrame.Parent = pageContainer
+
+        local vp = Instance.new("ViewportFrame")
+        vp.BackgroundColor3 = theme.WindowBg
+        vp.BorderSizePixel = 0
+        vp.Size = UDim2.new(1, 0, 1, 0)
+        vp.Active = true
+        vp.Parent = pageFrame
+        applyCorner(vp, 2)
+        applyBorder(vp, theme.Border)
+
+        local cam = Instance.new("Camera")
+        cam.CameraType = Enum.CameraType.Scriptable
+        cam.FieldOfView = opts.FOV or tw._defaults.FOV
+        cam.Parent = vp
+        vp.CurrentCamera = cam
+
+        local emptyLbl = Instance.new("TextLabel")
+        emptyLbl.BackgroundTransparency = 1
+        emptyLbl.Size = UDim2.new(1, 0, 1, 0)
+        emptyLbl.Font = Enum.Font.RobotoMono
+        emptyLbl.Text = "No target"
+        emptyLbl.TextColor3 = theme.SubText
+        emptyLbl.TextSize = 13
+        emptyLbl.ZIndex = 2
+        emptyLbl.Parent = vp
+
+        local btn, lbl, dot = makeTabButton(pageName)
+
+        local page = {
+            _parent      = tw,
+            _page        = pageFrame,
+            _viewport    = vp,
+            _camera      = cam,
+            _emptyLbl    = emptyLbl,
+            _btn         = btn,
+            _lbl         = lbl,
+            _dot         = dot,
+            _status      = "empty",
+            _target      = nil,
+            _clone       = nil,
+            _angle       = 0,
+            _fov         = opts.FOV or tw._defaults.FOV,
+            _padding     = opts.Padding or tw._defaults.Padding,
+            _autoRotate  = opts.AutoRotate ~= nil and opts.AutoRotate or tw._defaults.AutoRotate,
+            _speedDeg    = opts.RotationSpeed or tw._defaults.RotationSpeed,
+            _conns       = {},
+            _dragging    = false,
+            _lastMouse   = Vector2.zero,
+            _hbConn      = nil,
+            _hbPaused    = false,
+            _destroyed   = false,
+            _name        = pageName,
+        }
+
+        if opts.StartingRotation then
+            local presets = { Front = 0, Back = math.rad(180), Left = math.rad(90), Right = math.rad(-90) }
+            page._angle = presets[opts.StartingRotation] or 0
+        end
+
+        -- Camera fitting
+        local function refit()
+            if page._clone then
+                Axiom._Internal.FitCamera(cam, page._clone, page._fov, page._padding, page._angle)
+            end
+        end
+
+        -- Model loading
+        local function clearClone()
+            if page._clone then
+                page._clone:Destroy()
+                page._clone = nil
+            end
+            emptyLbl.Visible = true
+            emptyLbl.Text = "No target"
+        end
+
+        local function loadInstance(inst)
+            clearClone()
+            local clone = Axiom._Internal.PrepareModel(inst)
+            if not clone then
+                page._status = "destroyed"
+                updateStatusDot(page)
+                return
+            end
+            clone.Parent = vp
+            page._clone = clone
+            emptyLbl.Visible = false
+            task.defer(refit)
+        end
+
+        local function clearPlayerConns()
+            for k, c in pairs(page._conns) do
+                pcall(function() c:Disconnect() end)
+                page._conns[k] = nil
+            end
+        end
+
+        local function onCharacter(char)
+            loadInstance(char)
+            page._status = "live"
+            updateStatusDot(page)
+        end
+
+        local function loadPlayer(player)
+            clearPlayerConns()
+            if player.Character then
+                onCharacter(player.Character)
+            else
+                page._status = "waiting"
+                emptyLbl.Visible = true
+                emptyLbl.Text = "Waiting for character…"
+                updateStatusDot(page)
+            end
+            page._conns.added = player.CharacterAdded:Connect(onCharacter)
+            page._conns.removing = player.CharacterRemoving:Connect(function()
+                if page._clone then page._clone:Destroy(); page._clone = nil end
+                page._status = "waiting"
+                emptyLbl.Visible = true
+                emptyLbl.Text = "Waiting for character…"
+                updateStatusDot(page)
+            end)
+        end
+
+        function page:SetTarget(target)
+            clearPlayerConns()
+            page._target = target
+            if target == nil then
+                clearClone()
+                page._status = "empty"
+                updateStatusDot(page)
+                return
+            end
+            if typeof(target) == "Instance" then
+                if target:IsA("Player") then
+                    loadPlayer(target)
+                elseif target:IsA("Humanoid") then
+                    if target.Parent then loadInstance(target.Parent) end
+                    page._status = "snapshot"
+                elseif target:IsA("Model") or target:IsA("BasePart") then
+                    loadInstance(target)
+                    page._status = "snapshot"
+                else
+                    warn("[Axiom.TargetWindow] Unsupported target type: " .. target.ClassName)
+                end
+                updateStatusDot(page)
+            end
+        end
+
+        function page:GetTarget() return page._target end
+        function page:Refresh()
+            if page._target then page:SetTarget(page._target) end
+        end
+        function page:SetName(n)
+            page._name = n
+            lbl.Text = n
+            local sz = TextService:GetTextSize(n, 13, Enum.Font.RobotoMono, Vector2.new(999, 26))
+            btn.Size = UDim2.new(0, sz.X + 32, 1, 0)
+        end
+        function page:GetName() return page._name end
+        function page:SetFOV(f) page._fov = f; cam.FieldOfView = f; refit() end
+        function page:SetPadding(p) page._padding = p; refit() end
+        function page:SetRotation(r)
+            if type(r) == "string" then
+                local presets = { Front = 0, Back = math.rad(180), Left = math.rad(90), Right = math.rad(-90) }
+                page._angle = presets[r] or 0
+            else
+                page._angle = r
+            end
+            refit()
+        end
+        function page:SetAutoRotate(b) page._autoRotate = b end
+        function page:SetSpeed(d) page._speedDeg = d end
+        function page:GetStatus() return page._status end
+        function page:GetViewport() return vp end
+        function page:GetCamera() return cam end
+        function page:GetModel() return page._clone end
+
+        -- Drag rotation
+        vp.InputBegan:Connect(function(i)
+            if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.MouseButton2 then
+                page._dragging = true
+                page._lastMouse = i.Position
+            end
+        end)
+        local dragEndConn = UserInputService.InputEnded:Connect(function(i)
+            if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.MouseButton2 then
+                page._dragging = false
+            end
+        end)
+        local dragMoveConn = UserInputService.InputChanged:Connect(function(i)
+            if not page._dragging then return end
+            if i.UserInputType ~= Enum.UserInputType.MouseMovement then return end
+            if not pageFrame.Visible then return end
+            local d = i.Position - page._lastMouse
+            page._lastMouse = i.Position
+            page._angle = page._angle + math.rad(d.X * 0.5)
+            refit()
+        end)
+
+        -- Auto-rotate heartbeat
+        page._hbConn = RunService.Heartbeat:Connect(function(dt)
+            if page._hbPaused or not page._autoRotate then return end
+            if not page._clone then return end
+            page._angle = (page._angle + math.rad(page._speedDeg) * dt) % (2 * math.pi)
+            refit()
+        end)
+
+        function page:Destroy()
+            if page._destroyed then return end
+            page._destroyed = true
+            clearPlayerConns()
+            if page._hbConn then page._hbConn:Disconnect() end
+            dragEndConn:Disconnect()
+            dragMoveConn:Disconnect()
+            page._page:Destroy()
+            btn:Destroy()
+        end
+
+        btn.MouseButton1Click:Connect(function() setActivePage(page) end)
+
+        if opts.Target then page:SetTarget(opts.Target) end
+
+        table.insert(tw._pages, page)
+        return page
+    end
+
+    function tw:AddTarget(opts)
+        return buildPage(opts)
+    end
+
+    function tw:RemoveTarget(page)
+        for i, p in ipairs(self._pages) do
+            if p == page then
+                local wasActive = (self._activePage == page)
+                table.remove(self._pages, i)
+                p:Destroy()
+                if wasActive then
+                    self._activePage = nil
+                    self._activeIdx = nil
+                    if #self._pages > 0 then
+                        local nextIdx = math.min(i, #self._pages)
+                        setActivePage(self._pages[nextIdx])
+                    end
+                end
+                return
+            end
+        end
+    end
+
+    function tw:ClearTargets()
+        for _, p in ipairs(self._pages) do p:Destroy() end
+        self._pages = {}
+        self._activePage = nil
+        self._activeIdx = nil
+    end
+
+    function tw:SetTitle(t) chrome:SetTitle(t) end
+    function tw:GetTitle() return title end
+    function tw:SetActivePage(idxOrPage)
+        local page = idxOrPage
+        if type(idxOrPage) == "number" then page = self._pages[idxOrPage] end
+        if page and page._page then setActivePage(page) end
+    end
+    function tw:GetActivePage() return self._activePage end
+    function tw:GetPages()
+        local copy = {}
+        for i, p in ipairs(self._pages) do copy[i] = p end
+        return copy
+    end
+    function tw:Show() frame.Visible = true end
+    function tw:Hide()
+        frame.Visible = false
+        if owner._stateFilePath then pcall(function() owner:SaveState() end) end
+    end
+    function tw:IsVisible() return frame.Visible end
+    function tw:SetPosition(p) frame.Position = p end
+    function tw:GetPosition() return frame.Position end
+    function tw:SetSize(s) frame.Size = s end
+    function tw:GetSize() return frame.Size end
+    function tw:GetFrame() return frame end
+    function tw:GetBody() return body end
+    function tw:Destroy()
+        if tw._destroyed then return end
+        tw._destroyed = true
+        tw:ClearTargets()
+        if owner._stateFilePath then pcall(function() owner:SaveState() end) end
+        chrome:Destroy()
+    end
+
+    -- Restore visibility if saved
+    local visReg = owner._stateRegistry[stateKeyBase .. "::visible"]
+    if visReg then
+        local ok, v = pcall(visReg.get)
+        if ok and v == false then frame.Visible = false end
+    end
+
+    if self._targetWindows == nil then self._targetWindows = {} end
+    table.insert(self._targetWindows, tw)
+    return tw
 end
 
 return Axiom
