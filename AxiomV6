@@ -6688,13 +6688,14 @@ function Axiom:CreateTargetWindow(options)
         Draggable = options.DragEnabled ~= false,
         Resizable = options.Resizable  ~= false,
         OnClose   = function() end,
-        
+
         OnDragEnd = function(pos)
             if owner._stateFilePath then pcall(function() owner:SaveState() end) end
         end,
         OnResize  = function(sz)
             if owner._stateFilePath then pcall(function() owner:SaveState() end) end
         end,
+    })  
 
     local body = chrome:GetBody()
     local frame = chrome:GetFrame()
