@@ -1820,15 +1820,36 @@ function TabComponent:AddDropdown(options)
     header.BackgroundColor3 = options.Color or theme.FrameBg
     if options.Color then warnCustomColor(self, "Dropdown") end
     header.Size = UDim2.new(1, 0, 0, 24)
-    header.Font = Enum.Font.RobotoMono
-    header.Text = string.format(" %s: %s", text, tostring(selected))
-    header.TextColor3 = theme.Text
-    header.TextSize = 13
-    header.TextXAlignment = Enum.TextXAlignment.Left
+    header.Text = ""
     header.Parent = container
     applyCorner(header, 2)
     applyBorder(header, theme.Border)
-    addHeaderIcon(header, options.Icon)
+
+    local iconW = 0
+    if options.Icon and options.Icon ~= "" then
+        local id = Axiom.ResolveIcon(options.Icon)
+        if id and id ~= "" then
+            local icn = Instance.new("ImageLabel")
+            icn.BackgroundTransparency = 1
+            icn.AnchorPoint = Vector2.new(0, 0.5)
+            icn.Position = UDim2.new(0, 6, 0.5, 0)
+            icn.Size = UDim2.new(0, 14, 0, 14)
+            icn.Image = id
+            icn.Parent = header
+            iconW = 22
+        end
+    end
+
+    local headerLabel = Instance.new("TextLabel")
+    headerLabel.BackgroundTransparency = 1
+    headerLabel.Position = UDim2.new(0, 6 + iconW, 0, 0)
+    headerLabel.Size = UDim2.new(1, -(6 + iconW), 1, 0)
+    headerLabel.Font = Enum.Font.RobotoMono
+    headerLabel.Text = string.format("%s: %s", text, tostring(selected))
+    headerLabel.TextColor3 = theme.Text
+    headerLabel.TextSize = 13
+    headerLabel.TextXAlignment = Enum.TextXAlignment.Left
+    headerLabel.Parent = header
 
     local listFrame = Instance.new("Frame")
     listFrame.BackgroundColor3 = theme.TabNormal
@@ -1863,7 +1884,7 @@ function TabComponent:AddDropdown(options)
             optBtn.MouseButton1Click:Connect(function()
                 if not currentEnabled then return end
                 selected = optItem
-                header.Text = string.format(" %s: %s", text, tostring(selected))
+                headerLabel.Text = string.format("%s: %s", text, tostring(selected))
                 isOpen = false
                 TweenService:Create(container, TWEEN_FAST, {Size = UDim2.new(1, 0, 0, 24)}):Play()
                 TweenService:Create(listFrame, TWEEN_FAST, {Size = UDim2.new(1, 0, 0, 0)}):Play()
@@ -1895,7 +1916,7 @@ function TabComponent:AddDropdown(options)
     function obj:SetValue(val)
         if table.find(items, val) then
             selected = val
-            header.Text = string.format(" %s: %s", text, tostring(selected))
+            headerLabel.Text = string.format("%s: %s", text, tostring(selected))
             safeCall(currentCallback, selected)
         end
     end
@@ -1904,7 +1925,7 @@ function TabComponent:AddDropdown(options)
         items = newItems
         if not table.find(items, selected) then
             selected = items[1]
-            header.Text = string.format(" %s: %s", text, tostring(selected))
+            headerLabel.Text = string.format("%s: %s", text, tostring(selected))
             safeCall(currentCallback, selected)
         end
         rebuildOptions()
@@ -1912,7 +1933,7 @@ function TabComponent:AddDropdown(options)
     function obj:Clear()
         items = {}
         selected = nil
-        header.Text = string.format(" %s: ", text)
+        headerLabel.Text = string.format("%s: ", text)
         rebuildOptions()
         safeCall(currentCallback, nil)
     end
@@ -1922,10 +1943,10 @@ function TabComponent:AddDropdown(options)
         header.Active = state
         if state then
             header.BackgroundColor3 = options.Color or theme.FrameBg
-            header.TextColor3 = theme.Text
+            headerLabel.TextColor3 = theme.Text
         else
             header.BackgroundColor3 = disabledColor(options.Color or theme.FrameBg)
-            header.TextColor3 = disabledColor(theme.Text)
+            headerLabel.TextColor3 = disabledColor(theme.Text)
         end
     end
     function obj:IsEnabled() return currentEnabled end
@@ -1968,15 +1989,36 @@ function TabComponent:AddSearchableDropdown(options)
     header.BackgroundColor3 = options.Color or theme.FrameBg
     if options.Color then warnCustomColor(self, "SearchableDropdown") end
     header.Size = UDim2.new(1, 0, 0, 24)
-    header.Font = Enum.Font.RobotoMono
-    header.Text = string.format(" %s: %s", text, tostring(selected))
-    header.TextColor3 = theme.Text
-    header.TextSize = 13
-    header.TextXAlignment = Enum.TextXAlignment.Left
+    header.Text = ""
     header.Parent = container
     applyCorner(header, 2)
     applyBorder(header, theme.Border)
-    addHeaderIcon(header, options.Icon)
+
+    local iconW = 0
+    if options.Icon and options.Icon ~= "" then
+        local id = Axiom.ResolveIcon(options.Icon)
+        if id and id ~= "" then
+            local icn = Instance.new("ImageLabel")
+            icn.BackgroundTransparency = 1
+            icn.AnchorPoint = Vector2.new(0, 0.5)
+            icn.Position = UDim2.new(0, 6, 0.5, 0)
+            icn.Size = UDim2.new(0, 14, 0, 14)
+            icn.Image = id
+            icn.Parent = header
+            iconW = 22
+        end
+    end
+
+    local headerLabel = Instance.new("TextLabel")
+    headerLabel.BackgroundTransparency = 1
+    headerLabel.Position = UDim2.new(0, 6 + iconW, 0, 0)
+    headerLabel.Size = UDim2.new(1, -(6 + iconW), 1, 0)
+    headerLabel.Font = Enum.Font.RobotoMono
+    headerLabel.Text = string.format("%s: %s", text, tostring(selected))
+    headerLabel.TextColor3 = theme.Text
+    headerLabel.TextSize = 13
+    headerLabel.TextXAlignment = Enum.TextXAlignment.Left
+    headerLabel.Parent = header
 
     local listFrame = Instance.new("Frame")
     listFrame.BackgroundColor3 = theme.TabNormal
@@ -2031,7 +2073,7 @@ function TabComponent:AddSearchableDropdown(options)
             btn.MouseButton1Click:Connect(function()
                 if not currentEnabled then return end
                 selected = optItem
-                header.Text = string.format(" %s: %s", text, tostring(selected))
+                headerLabel.Text = string.format("%s: %s", text, tostring(selected))
                 isOpen = false
                 TweenService:Create(container, TWEEN_FAST, {Size = UDim2.new(1, 0, 0, 24)}):Play()
                 TweenService:Create(listFrame, TWEEN_FAST, {Size = UDim2.new(1, 0, 0, 0)}):Play()
@@ -2081,7 +2123,7 @@ function TabComponent:AddSearchableDropdown(options)
     function obj:SetValue(val)
         if table.find(items, val) then
             selected = val
-            header.Text = string.format(" %s: %s", text, tostring(selected))
+            headerLabel.Text = string.format("%s: %s", text, tostring(selected))
             safeCall(currentCallback, selected)
         end
     end
@@ -2090,7 +2132,7 @@ function TabComponent:AddSearchableDropdown(options)
         items = newItems
         if not table.find(items, selected) then
             selected = items[1]
-            header.Text = string.format(" %s: %s", text, tostring(selected))
+            headerLabel.Text = string.format("%s: %s", text, tostring(selected))
             safeCall(currentCallback, selected)
         end
         rebuildOptions(); filterOptions()
@@ -2098,7 +2140,7 @@ function TabComponent:AddSearchableDropdown(options)
     function obj:Clear()
         items = {}
         selected = nil
-        header.Text = string.format(" %s: ", text)
+        headerLabel.Text = string.format("%s: ", text)
         rebuildOptions(); filterOptions()
         safeCall(currentCallback, nil)
     end
@@ -2108,10 +2150,10 @@ function TabComponent:AddSearchableDropdown(options)
         header.Active = state
         if state then
             header.BackgroundColor3 = options.Color or theme.FrameBg
-            header.TextColor3 = theme.Text
+            headerLabel.TextColor3 = theme.Text
         else
             header.BackgroundColor3 = disabledColor(options.Color or theme.FrameBg)
-            header.TextColor3 = disabledColor(theme.Text)
+            headerLabel.TextColor3 = disabledColor(theme.Text)
         end
     end
     function obj:IsEnabled() return currentEnabled end
@@ -2154,21 +2196,42 @@ function TabComponent:AddMultiSelectDropdown(options)
     header.BackgroundColor3 = options.Color or theme.FrameBg
     if options.Color then warnCustomColor(self, "MultiSelectDropdown") end
     header.Size = UDim2.new(1, 0, 0, 24)
-    header.Font = Enum.Font.RobotoMono
-    header.TextColor3 = theme.Text
-    header.TextSize = 13
-    header.TextXAlignment = Enum.TextXAlignment.Left
+    header.Text = ""
     header.Parent = container
     applyCorner(header, 2)
     applyBorder(header, theme.Border)
-    addHeaderIcon(header, options.Icon)
+
+    local iconW = 0
+    if options.Icon and options.Icon ~= "" then
+        local id = Axiom.ResolveIcon(options.Icon)
+        if id and id ~= "" then
+            local icn = Instance.new("ImageLabel")
+            icn.BackgroundTransparency = 1
+            icn.AnchorPoint = Vector2.new(0, 0.5)
+            icn.Position = UDim2.new(0, 6, 0.5, 0)
+            icn.Size = UDim2.new(0, 14, 0, 14)
+            icn.Image = id
+            icn.Parent = header
+            iconW = 22
+        end
+    end
+
+    local headerLabel = Instance.new("TextLabel")
+    headerLabel.BackgroundTransparency = 1
+    headerLabel.Position = UDim2.new(0, 6 + iconW, 0, 0)
+    headerLabel.Size = UDim2.new(1, -(6 + iconW), 1, 0)
+    headerLabel.Font = Enum.Font.RobotoMono
+    headerLabel.TextColor3 = theme.Text
+    headerLabel.TextSize = 13
+    headerLabel.TextXAlignment = Enum.TextXAlignment.Left
+    headerLabel.Parent = header
 
     local function updateHeader()
         local count = 0
         for _ in pairs(selected) do count = count + 1 end
-        if count == 0 then header.Text = string.format(" %s: None", text)
-        elseif count == #items then header.Text = string.format(" %s: All", text)
-        else header.Text = string.format(" %s: %d selected", text, count) end
+        if count == 0 then headerLabel.Text = string.format("%s: None", text)
+        elseif count == #items then headerLabel.Text = string.format("%s: All", text)
+        else headerLabel.Text = string.format("%s: %d selected", text, count) end
     end
     updateHeader()
 
@@ -2336,9 +2399,13 @@ function TabComponent:AddMultiSelectDropdown(options)
     function obj:SetEnabled(state)
         currentEnabled = state
         header.Active = state
-        header.BackgroundColor3 = state and (options.Color or theme.FrameBg)
-                                        or disabledColor(options.Color or theme.FrameBg)
-        header.TextColor3 = state and theme.Text or disabledColor(theme.Text)
+        if state then
+            header.BackgroundColor3 = options.Color or theme.FrameBg
+            headerLabel.TextColor3 = theme.Text
+        else
+            header.BackgroundColor3 = disabledColor(options.Color or theme.FrameBg)
+            headerLabel.TextColor3 = disabledColor(theme.Text)
+        end
     end
     function obj:IsEnabled() return currentEnabled end
     function obj:Destroy() container:Destroy() end
@@ -2381,21 +2448,42 @@ function TabComponent:AddMultiSelectSearchableDropdown(options)
     header.BackgroundColor3 = options.Color or theme.FrameBg
     if options.Color then warnCustomColor(self, "MultiSelectSearchableDropdown") end
     header.Size = UDim2.new(1, 0, 0, 24)
-    header.Font = Enum.Font.RobotoMono
-    header.TextColor3 = theme.Text
-    header.TextSize = 13
-    header.TextXAlignment = Enum.TextXAlignment.Left
+    header.Text = ""
     header.Parent = container
     applyCorner(header, 2)
     applyBorder(header, theme.Border)
-    addHeaderIcon(header, options.Icon)
+
+    local iconW = 0
+    if options.Icon and options.Icon ~= "" then
+        local id = Axiom.ResolveIcon(options.Icon)
+        if id and id ~= "" then
+            local icn = Instance.new("ImageLabel")
+            icn.BackgroundTransparency = 1
+            icn.AnchorPoint = Vector2.new(0, 0.5)
+            icn.Position = UDim2.new(0, 6, 0.5, 0)
+            icn.Size = UDim2.new(0, 14, 0, 14)
+            icn.Image = id
+            icn.Parent = header
+            iconW = 22
+        end
+    end
+
+    local headerLabel = Instance.new("TextLabel")
+    headerLabel.BackgroundTransparency = 1
+    headerLabel.Position = UDim2.new(0, 6 + iconW, 0, 0)
+    headerLabel.Size = UDim2.new(1, -(6 + iconW), 1, 0)
+    headerLabel.Font = Enum.Font.RobotoMono
+    headerLabel.TextColor3 = theme.Text
+    headerLabel.TextSize = 13
+    headerLabel.TextXAlignment = Enum.TextXAlignment.Left
+    headerLabel.Parent = header
 
     local function updateHeader()
         local count = 0
         for _ in pairs(selected) do count = count + 1 end
-        if count == 0 then header.Text = string.format(" %s: None", text)
-        elseif count == #items then header.Text = string.format(" %s: All", text)
-        else header.Text = string.format(" %s: %d selected", text, count) end
+        if count == 0 then headerLabel.Text = string.format("%s: None", text)
+        elseif count == #items then headerLabel.Text = string.format("%s: All", text)
+        else headerLabel.Text = string.format("%s: %d selected", text, count) end
     end
     updateHeader()
 
@@ -2547,9 +2635,13 @@ function TabComponent:AddMultiSelectSearchableDropdown(options)
     function obj:SetEnabled(state)
         currentEnabled = state
         header.Active = state
-        header.BackgroundColor3 = state and (options.Color or theme.FrameBg)
-                                        or disabledColor(options.Color or theme.FrameBg)
-        header.TextColor3 = state and theme.Text or disabledColor(theme.Text)
+        if state then
+            header.BackgroundColor3 = options.Color or theme.FrameBg
+            headerLabel.TextColor3 = theme.Text
+        else
+            header.BackgroundColor3 = disabledColor(options.Color or theme.FrameBg)
+            headerLabel.TextColor3 = disabledColor(theme.Text)
+        end
     end
     function obj:IsEnabled() return currentEnabled end
     function obj:Destroy() container:Destroy() end
@@ -2590,15 +2682,36 @@ function TabComponent:AddColorPicker(options)
     header.BackgroundColor3 = options.Color or theme.FrameBg
     if options.Color then warnCustomColor(self, "ColorPicker") end
     header.Size = UDim2.new(1, 0, 0, 24)
-    header.Font = Enum.Font.RobotoMono
-    header.Text = " " .. text
-    header.TextColor3 = theme.Text
-    header.TextSize = 13
-    header.TextXAlignment = Enum.TextXAlignment.Left
+    header.Text = ""
     header.Parent = container
     applyCorner(header, 2)
     applyBorder(header, theme.Border)
-    addHeaderIcon(header, options.Icon)
+
+    local iconW = 0
+    if options.Icon and options.Icon ~= "" then
+        local id = Axiom.ResolveIcon(options.Icon)
+        if id and id ~= "" then
+            local icn = Instance.new("ImageLabel")
+            icn.BackgroundTransparency = 1
+            icn.AnchorPoint = Vector2.new(0, 0.5)
+            icn.Position = UDim2.new(0, 6, 0.5, 0)
+            icn.Size = UDim2.new(0, 14, 0, 14)
+            icn.Image = id
+            icn.Parent = header
+            iconW = 22
+        end
+    end
+
+    local headerLabel = Instance.new("TextLabel")
+    headerLabel.BackgroundTransparency = 1
+    headerLabel.Position = UDim2.new(0, 6 + iconW, 0, 0)
+    headerLabel.Size = UDim2.new(1, -(6 + iconW), 1, 0)
+    headerLabel.Font = Enum.Font.RobotoMono
+    headerLabel.Text = text
+    headerLabel.TextColor3 = theme.Text
+    headerLabel.TextSize = 13
+    headerLabel.TextXAlignment = Enum.TextXAlignment.Left
+    headerLabel.Parent = header
 
     local preview = Instance.new("Frame")
     preview.AnchorPoint = Vector2.new(1, 0.5)
@@ -2625,7 +2738,6 @@ function TabComponent:AddColorPicker(options)
         TweenService:Create(container, TWEEN_FAST, {Size = UDim2.new(1, 0, 0, targetHeight)}):Play()
     end)
 
-    -- ── Saturation / Value square ─────────────────────────────────────────
     local svArea = Instance.new("Frame")
     svArea.Position = UDim2.new(0, 6, 0, 6)
     svArea.Size = UDim2.new(1, -12, 0, 110)
@@ -2680,7 +2792,6 @@ function TabComponent:AddColorPicker(options)
     svStroke.Color = Color3.new(0, 0, 0)
     svStroke.Parent = svHandle
 
-    -- ── Hue strip ─────────────────────────────────────────────────────────
     local hueBar = Instance.new("Frame")
     hueBar.Position = UDim2.new(0, 6, 0, 122)
     hueBar.Size = UDim2.new(1, -12, 0, 12)
@@ -2716,7 +2827,6 @@ function TabComponent:AddColorPicker(options)
     hueStroke.Parent = hueHandle
     applyCorner(hueHandle, 2)
 
-    -- ── Preview swatch + hex input ────────────────────────────────────────
     local previewBox = Instance.new("Frame")
     previewBox.Position = UDim2.new(0, 6, 0, 140)
     previewBox.Size = UDim2.new(0, 26, 0, 26)
@@ -2844,9 +2954,13 @@ function TabComponent:AddColorPicker(options)
     function obj:SetEnabled(state)
         currentEnabled = state
         header.Active = state
-        header.BackgroundColor3 = state and (options.Color or theme.FrameBg)
-                                        or disabledColor(options.Color or theme.FrameBg)
-        header.TextColor3 = state and theme.Text or disabledColor(theme.Text)
+        if state then
+            header.BackgroundColor3 = options.Color or theme.FrameBg
+            headerLabel.TextColor3 = theme.Text
+        else
+            header.BackgroundColor3 = disabledColor(options.Color or theme.FrameBg)
+            headerLabel.TextColor3 = disabledColor(theme.Text)
+        end
     end
     function obj:IsEnabled() return currentEnabled end
     function obj:Destroy() container:Destroy() end
