@@ -17,13 +17,78 @@ print([[
 
 --axiom panchito
 
-local V = "V6.8.3"
+local V = "V6.9.1"
 
 local Axiom = {}
 Axiom.__index = Axiom
 
 local TabComponent = {}
 TabComponent.__index = TabComponent
+
+-- ═══ Icon system ══════════════════════════════════════════════════════════
+Axiom.IconPack = Axiom.IconPack or {}
+do
+    local SOURCES = {
+        "https://github.com/xxpwnxxx420lord/Scripts/blob/main/iconpack.lua?raw=true",
+        "https://raw.githubusercontent.com/xxpwnxxx420lord/Scripts/main/iconpack.lua",
+    }
+    for _, url in ipairs(SOURCES) do
+        local ok, tbl = pcall(function() return loadstring(game:HttpGet(url))() end)
+        if ok and type(tbl) == "table" then
+            local n = 0
+            for k, v in pairs(tbl) do
+                if type(k) == "string" and type(v) == "string" then
+                    Axiom.IconPack[k] = v; n = n + 1
+                end
+            end
+            if n > 0 then break end
+        end
+    end
+    if not next(Axiom.IconPack) then warn("[Axiom] icon pack failed to load") end
+end
+
+function Axiom.ResolveIcon(ref)
+    if ref == nil then return nil end
+    if type(ref) == "number" then return "rbxassetid://" .. tostring(ref) end
+    if type(ref) ~= "string" or ref == "" then return ref end
+    if ref:match("^rbxasset://") or ref:match("^rbxassetid://")
+       or ref:match("^rbxthumb://") or ref:match("^content://")
+       or ref:match("^https?://") then return ref end
+    if tonumber(ref) then return "rbxassetid://" .. ref end
+    return Axiom.IconPack[ref] or ref
+end
+Axiom.resolveIcon = Axiom.ResolveIcon
+
+local function addLeftIcon(parent, iconRef, xPos, size)
+    if not iconRef or iconRef == "" then return nil, 0 end
+    local id = Axiom.ResolveIcon(iconRef)
+    if not id or id == "" then return nil, 0 end
+    size = size or 16
+    local icn = Instance.new("ImageLabel")
+    icn.BackgroundTransparency = 1
+    icn.AnchorPoint = Vector2.new(0, 0.5)
+    icn.Position = UDim2.new(0, xPos or 4, 0.5, 0)
+    icn.Size = UDim2.new(0, size, 0, size)
+    icn.Image = id
+    icn.Parent = parent
+    return icn, size + 6
+end
+
+local function addHeaderIcon(header, iconRef)
+    if not iconRef or iconRef == "" then return end
+    local id = Axiom.ResolveIcon(iconRef)
+    if not id or id == "" then return end
+    local icn = Instance.new("ImageLabel")
+    icn.BackgroundTransparency = 1
+    icn.AnchorPoint = Vector2.new(0, 0.5)
+    icn.Position = UDim2.new(0, 6, 0.5, 0)
+    icn.Size = UDim2.new(0, 14, 0, 14)
+    icn.Image = id
+    icn.Parent = header
+    local p = Instance.new("UIPadding")
+    p.PaddingLeft = UDim.new(0, 22)
+    p.Parent = header
+end
 
 -- ── Services ──────────────────────────────────────────────────────────────────
 local cloneref = cloneref or clonereference or function(instance) return instance end
@@ -270,6 +335,7 @@ function Axiom._Internal.CreateWindowChrome(opts)
     local theme    = opts.Theme
     local parent   = opts.Parent        or CoreGui
     local title    = opts.Title         or "Window"
+    local owner    = opts.Owner
     local position = opts.Position      or UDim2.new(0.5, -210, 0.3, 0)
     local size     = opts.Size          or UDim2.new(0, 420, 0, 320)
     local icon     = opts.Icon
@@ -296,6 +362,9 @@ function Axiom._Internal.CreateWindowChrome(opts)
     titleBar.Parent = frame
     applyCorner(titleBar, 2)
     applyBorder(titleBar, theme.Border)
+    self:_bindTheme(titleBar, {BackgroundColor3 = "TitleBg"})
+    local _tbStroke = titleBar:FindFirstChildOfClass("UIStroke")
+    if _tbStroke then self:_bindTheme(_tbStroke, {Color = "Border"}) end
 
     local titleLbl = Instance.new("TextLabel")
     titleLbl.BackgroundTransparency = 1
@@ -310,7 +379,7 @@ function Axiom._Internal.CreateWindowChrome(opts)
         iconLbl.BackgroundTransparency = 1
         iconLbl.Size = UDim2.new(0, 18, 0, 18)
         iconLbl.Position = UDim2.new(0, 4, 0.5, -9)
-        iconLbl.Image = icon
+        iconLbl.Image = Axiom.ResolveIcon(icon)
         iconLbl.Parent = titleBar
         titleLbl.Position = UDim2.new(0, 26, 0, 0)
         titleLbl.Size = UDim2.new(1, -74, 1, 0)
@@ -444,10 +513,18 @@ function Axiom._Internal.CreateWindowChrome(opts)
         screen:Destroy()
     end
 
+    if owner and owner._bindTheme then
+        owner:_bindTheme(titleBar, {BackgroundColor3 = "TitleBg"})
+        local _s = titleBar:FindFirstChildOfClass("UIStroke")
+        if _s then owner:_bindTheme(_s, {Color = "Border"}) end
+        owner:_bindTheme(titleLbl,    {TextColor3     = "Text"})
+        owner:_bindTheme(collapseBtn, {TextColor3     = "SubText"})
+        owner:_bindTheme(closeBtn,    {TextColor3     = "SubText"})
+        owner:_bindTheme(body,        {BackgroundColor3 = "WindowBg"})
+    end
+
     return api
 end
-
-
 
 -- ════════════════════════════════════════════════════════════════════════════
 --  Axiom.new
@@ -501,7 +578,7 @@ function Axiom.new(options)
         icon.BackgroundTransparency = 1
         icon.Size = UDim2.new(0, 20, 0, 20)
         icon.Position = UDim2.new(0, 4, 0.5, -10)
-        icon.Image = options.Icon
+        icon.Image = Axiom.ResolveIcon(options.Icon)
         icon.Parent = titleBar
         titleLbl.Position = UDim2.new(0, 28, 0, 0)
         titleLbl.Size = UDim2.new(1, -88, 1, 0)
@@ -897,7 +974,7 @@ function Axiom:AddTab(options)
         icon.BackgroundTransparency = 1
         icon.Size     = UDim2.new(0, 18, 0, 18)
         icon.Position = UDim2.new(0, 4, 0.5, -9)
-        icon.Image    = iconId
+        icon.Image    = Axiom.ResolveIcon(iconId)
         icon.Parent   = tabBtn
     end
 
@@ -1028,7 +1105,7 @@ function TabComponent:AddSubTab(options)
         subIcon.BackgroundTransparency = 1
         subIcon.Size = UDim2.new(0, 16, 0, 16)
         subIcon.Position = UDim2.new(0, 4, 0.5, -8)
-        subIcon.Image = iconId
+        subIcon.Image = Axiom.ResolveIcon(iconId)
         subIcon.Parent = subBtn
     end
 
@@ -1222,10 +1299,25 @@ function TabComponent:AddDivision(options)
     titleBar.Parent = divisionFrame
     applyCorner(titleBar, 2)
 
+    local iconW = 0
+    if options.Icon and options.Icon ~= "" then
+        local id = Axiom.ResolveIcon(options.Icon)
+        if id and id ~= "" then
+            local icn = Instance.new("ImageLabel")
+            icn.BackgroundTransparency = 1
+            icn.AnchorPoint = Vector2.new(0, 0.5)
+            icn.Position = UDim2.new(0, 6, 0.5, 0)
+            icn.Size = UDim2.new(0, 14, 0, 14)
+            icn.Image = id
+            icn.Parent = titleBar
+            iconW = 20
+        end
+    end
+
     local titleLabel = Instance.new("TextLabel")
     titleLabel.BackgroundTransparency = 1
-    titleLabel.Position = UDim2.new(0, 6, 0, 0)
-    titleLabel.Size = UDim2.new(1, -12, 1, 0)
+    titleLabel.Position = UDim2.new(0, 6 + iconW, 0, 0)
+    titleLabel.Size = UDim2.new(1, -(12 + iconW), 1, 0)
     titleLabel.Font = Enum.Font.RobotoMono
     titleLabel.Text = title
     titleLabel.TextColor3 = theme.Text
@@ -1319,6 +1411,7 @@ function TabComponent:AddDivision(options)
     if self._window then self._window:_registerSearch(divisionFrame, title) end
     return division
 end
+
 -- ════════════════════════════════════════════════════════════════════════════
 --  AddButton
 -- ════════════════════════════════════════════════════════════════════════════
@@ -1359,7 +1452,7 @@ function TabComponent:AddButton(options)
         icon.BackgroundTransparency = 1
         icon.Size = UDim2.new(0, 18, 0, 18)
         icon.Position = UDim2.new(0, 4, 0.5, -9)
-        icon.Image = iconId
+        icon.Image = Axiom.ResolveIcon(iconId)
         icon.Parent = btn
     end
 
@@ -1393,8 +1486,6 @@ function TabComponent:AddButton(options)
 
     local obj = {}
     function obj:GetText() return lbl.Text end
-    function obj:GetInstance() return lbl end 
-    function obj:Destroy() lbl:Destroy() end
     function obj:SetCallback(cb) currentCallback = cb end
     function obj:SetIcon(id)
         if not icon then
@@ -1406,7 +1497,7 @@ function TabComponent:AddButton(options)
             lbl.Position = UDim2.new(0, 26, 0, 0)
             lbl.Size = UDim2.new(1, -30, 1, 0)
         end
-        icon.Image = id
+        icon.Image = Axiom.ResolveIcon(id)
     end
     function obj:SetEnabled(state)
         currentEnabled = state
@@ -1474,10 +1565,25 @@ function TabComponent:AddCheckbox(options)
     applyCorner(check, 2)
     applyBorder(check, theme.Accent)
 
+    local iconW = 0
+    if options.Icon and options.Icon ~= "" then
+        local id = Axiom.ResolveIcon(options.Icon)
+        if id and id ~= "" then
+            local icn = Instance.new("ImageLabel")
+            icn.BackgroundTransparency = 1
+            icn.AnchorPoint = Vector2.new(0, 0.5)
+            icn.Position = UDim2.new(0, 24, 0.5, 0)
+            icn.Size = UDim2.new(0, 16, 0, 16)
+            icn.Image = id
+            icn.Parent = row
+            iconW = 20
+        end
+    end
+
     local lbl = Instance.new("TextLabel")
     lbl.BackgroundTransparency = 1
-    lbl.Position = UDim2.new(0, 24, 0, 0)
-    lbl.Size = UDim2.new(1, -24, 1, 0)
+    lbl.Position = UDim2.new(0, 24 + iconW, 0, 0)
+    lbl.Size = UDim2.new(1, -(24 + iconW), 1, 0)
     lbl.Font = Enum.Font.RobotoMono
     lbl.Text = text
     lbl.TextColor3 = theme.Text
@@ -1583,9 +1689,26 @@ function TabComponent:AddSlider(options)
         end
     end
 
+    local iconW = 0
+    if options.Icon and options.Icon ~= "" then
+        local id = Axiom.ResolveIcon(options.Icon)
+        if id and id ~= "" then
+            local icn = Instance.new("ImageLabel")
+            icn.BackgroundTransparency = 1
+            icn.AnchorPoint = Vector2.new(0, 0.5)
+            icn.Position = UDim2.new(0, 4, 0.5, 0)
+            icn.Size = UDim2.new(0, 14, 0, 14)
+            icn.ZIndex = 3
+            icn.Image = id
+            icn.Parent = track
+            iconW = 20
+        end
+    end
+
     local lbl = Instance.new("TextLabel")
     lbl.BackgroundTransparency = 1
-    lbl.Size = UDim2.new(1, 0, 1, 0)
+    lbl.Position = UDim2.new(0, iconW, 0, 0)
+    lbl.Size = UDim2.new(1, -iconW, 1, 0)
     lbl.Font = Enum.Font.RobotoMono
     lbl.Text = formatValue(value)
     lbl.TextColor3 = theme.Text
@@ -1668,13 +1791,6 @@ function TabComponent:AddSlider(options)
     return obj
 end
 
-function TabComponent:AddDragInt(options)
-    options = options or {}
-    options.Int = true
-    options.Decimals = 0
-    return self:AddDragFloat(options)
-end
-
 -- ════════════════════════════════════════════════════════════════════════════
 --  AddDropdown
 -- ════════════════════════════════════════════════════════════════════════════
@@ -1704,14 +1820,36 @@ function TabComponent:AddDropdown(options)
     header.BackgroundColor3 = options.Color or theme.FrameBg
     if options.Color then warnCustomColor(self, "Dropdown") end
     header.Size = UDim2.new(1, 0, 0, 24)
-    header.Font = Enum.Font.RobotoMono
-    header.Text = string.format(" %s: %s", text, tostring(selected))
-    header.TextColor3 = theme.Text
-    header.TextSize = 13
-    header.TextXAlignment = Enum.TextXAlignment.Left
+    header.Text = ""
     header.Parent = container
     applyCorner(header, 2)
     applyBorder(header, theme.Border)
+
+    local iconW = 0
+    if options.Icon and options.Icon ~= "" then
+        local id = Axiom.ResolveIcon(options.Icon)
+        if id and id ~= "" then
+            local icn = Instance.new("ImageLabel")
+            icn.BackgroundTransparency = 1
+            icn.AnchorPoint = Vector2.new(0, 0.5)
+            icn.Position = UDim2.new(0, 6, 0.5, 0)
+            icn.Size = UDim2.new(0, 14, 0, 14)
+            icn.Image = id
+            icn.Parent = header
+            iconW = 22
+        end
+    end
+
+    local headerLabel = Instance.new("TextLabel")
+    headerLabel.BackgroundTransparency = 1
+    headerLabel.Position = UDim2.new(0, 6 + iconW, 0, 0)
+    headerLabel.Size = UDim2.new(1, -(6 + iconW), 1, 0)
+    headerLabel.Font = Enum.Font.RobotoMono
+    headerLabel.Text = string.format("%s: %s", text, tostring(selected))
+    headerLabel.TextColor3 = theme.Text
+    headerLabel.TextSize = 13
+    headerLabel.TextXAlignment = Enum.TextXAlignment.Left
+    headerLabel.Parent = header
 
     local listFrame = Instance.new("Frame")
     listFrame.BackgroundColor3 = theme.TabNormal
@@ -1746,7 +1884,7 @@ function TabComponent:AddDropdown(options)
             optBtn.MouseButton1Click:Connect(function()
                 if not currentEnabled then return end
                 selected = optItem
-                header.Text = string.format(" %s: %s", text, tostring(selected))
+                headerLabel.Text = string.format("%s: %s", text, tostring(selected))
                 isOpen = false
                 TweenService:Create(container, TWEEN_FAST, {Size = UDim2.new(1, 0, 0, 24)}):Play()
                 TweenService:Create(listFrame, TWEEN_FAST, {Size = UDim2.new(1, 0, 0, 0)}):Play()
@@ -1778,7 +1916,7 @@ function TabComponent:AddDropdown(options)
     function obj:SetValue(val)
         if table.find(items, val) then
             selected = val
-            header.Text = string.format(" %s: %s", text, tostring(selected))
+            headerLabel.Text = string.format("%s: %s", text, tostring(selected))
             safeCall(currentCallback, selected)
         end
     end
@@ -1787,7 +1925,7 @@ function TabComponent:AddDropdown(options)
         items = newItems
         if not table.find(items, selected) then
             selected = items[1]
-            header.Text = string.format(" %s: %s", text, tostring(selected))
+            headerLabel.Text = string.format("%s: %s", text, tostring(selected))
             safeCall(currentCallback, selected)
         end
         rebuildOptions()
@@ -1795,7 +1933,7 @@ function TabComponent:AddDropdown(options)
     function obj:Clear()
         items = {}
         selected = nil
-        header.Text = string.format(" %s: ", text)
+        headerLabel.Text = string.format("%s: ", text)
         rebuildOptions()
         safeCall(currentCallback, nil)
     end
@@ -1805,10 +1943,10 @@ function TabComponent:AddDropdown(options)
         header.Active = state
         if state then
             header.BackgroundColor3 = options.Color or theme.FrameBg
-            header.TextColor3 = theme.Text
+            headerLabel.TextColor3 = theme.Text
         else
             header.BackgroundColor3 = disabledColor(options.Color or theme.FrameBg)
-            header.TextColor3 = disabledColor(theme.Text)
+            headerLabel.TextColor3 = disabledColor(theme.Text)
         end
     end
     function obj:IsEnabled() return currentEnabled end
@@ -1851,14 +1989,36 @@ function TabComponent:AddSearchableDropdown(options)
     header.BackgroundColor3 = options.Color or theme.FrameBg
     if options.Color then warnCustomColor(self, "SearchableDropdown") end
     header.Size = UDim2.new(1, 0, 0, 24)
-    header.Font = Enum.Font.RobotoMono
-    header.Text = string.format(" %s: %s", text, tostring(selected))
-    header.TextColor3 = theme.Text
-    header.TextSize = 13
-    header.TextXAlignment = Enum.TextXAlignment.Left
+    header.Text = ""
     header.Parent = container
     applyCorner(header, 2)
     applyBorder(header, theme.Border)
+
+    local iconW = 0
+    if options.Icon and options.Icon ~= "" then
+        local id = Axiom.ResolveIcon(options.Icon)
+        if id and id ~= "" then
+            local icn = Instance.new("ImageLabel")
+            icn.BackgroundTransparency = 1
+            icn.AnchorPoint = Vector2.new(0, 0.5)
+            icn.Position = UDim2.new(0, 6, 0.5, 0)
+            icn.Size = UDim2.new(0, 14, 0, 14)
+            icn.Image = id
+            icn.Parent = header
+            iconW = 22
+        end
+    end
+
+    local headerLabel = Instance.new("TextLabel")
+    headerLabel.BackgroundTransparency = 1
+    headerLabel.Position = UDim2.new(0, 6 + iconW, 0, 0)
+    headerLabel.Size = UDim2.new(1, -(6 + iconW), 1, 0)
+    headerLabel.Font = Enum.Font.RobotoMono
+    headerLabel.Text = string.format("%s: %s", text, tostring(selected))
+    headerLabel.TextColor3 = theme.Text
+    headerLabel.TextSize = 13
+    headerLabel.TextXAlignment = Enum.TextXAlignment.Left
+    headerLabel.Parent = header
 
     local listFrame = Instance.new("Frame")
     listFrame.BackgroundColor3 = theme.TabNormal
@@ -1913,7 +2073,7 @@ function TabComponent:AddSearchableDropdown(options)
             btn.MouseButton1Click:Connect(function()
                 if not currentEnabled then return end
                 selected = optItem
-                header.Text = string.format(" %s: %s", text, tostring(selected))
+                headerLabel.Text = string.format("%s: %s", text, tostring(selected))
                 isOpen = false
                 TweenService:Create(container, TWEEN_FAST, {Size = UDim2.new(1, 0, 0, 24)}):Play()
                 TweenService:Create(listFrame, TWEEN_FAST, {Size = UDim2.new(1, 0, 0, 0)}):Play()
@@ -1963,7 +2123,7 @@ function TabComponent:AddSearchableDropdown(options)
     function obj:SetValue(val)
         if table.find(items, val) then
             selected = val
-            header.Text = string.format(" %s: %s", text, tostring(selected))
+            headerLabel.Text = string.format("%s: %s", text, tostring(selected))
             safeCall(currentCallback, selected)
         end
     end
@@ -1972,7 +2132,7 @@ function TabComponent:AddSearchableDropdown(options)
         items = newItems
         if not table.find(items, selected) then
             selected = items[1]
-            header.Text = string.format(" %s: %s", text, tostring(selected))
+            headerLabel.Text = string.format("%s: %s", text, tostring(selected))
             safeCall(currentCallback, selected)
         end
         rebuildOptions(); filterOptions()
@@ -1980,7 +2140,7 @@ function TabComponent:AddSearchableDropdown(options)
     function obj:Clear()
         items = {}
         selected = nil
-        header.Text = string.format(" %s: ", text)
+        headerLabel.Text = string.format("%s: ", text)
         rebuildOptions(); filterOptions()
         safeCall(currentCallback, nil)
     end
@@ -1990,10 +2150,10 @@ function TabComponent:AddSearchableDropdown(options)
         header.Active = state
         if state then
             header.BackgroundColor3 = options.Color or theme.FrameBg
-            header.TextColor3 = theme.Text
+            headerLabel.TextColor3 = theme.Text
         else
             header.BackgroundColor3 = disabledColor(options.Color or theme.FrameBg)
-            header.TextColor3 = disabledColor(theme.Text)
+            headerLabel.TextColor3 = disabledColor(theme.Text)
         end
     end
     function obj:IsEnabled() return currentEnabled end
@@ -2036,20 +2196,42 @@ function TabComponent:AddMultiSelectDropdown(options)
     header.BackgroundColor3 = options.Color or theme.FrameBg
     if options.Color then warnCustomColor(self, "MultiSelectDropdown") end
     header.Size = UDim2.new(1, 0, 0, 24)
-    header.Font = Enum.Font.RobotoMono
-    header.TextColor3 = theme.Text
-    header.TextSize = 13
-    header.TextXAlignment = Enum.TextXAlignment.Left
+    header.Text = ""
     header.Parent = container
     applyCorner(header, 2)
     applyBorder(header, theme.Border)
 
+    local iconW = 0
+    if options.Icon and options.Icon ~= "" then
+        local id = Axiom.ResolveIcon(options.Icon)
+        if id and id ~= "" then
+            local icn = Instance.new("ImageLabel")
+            icn.BackgroundTransparency = 1
+            icn.AnchorPoint = Vector2.new(0, 0.5)
+            icn.Position = UDim2.new(0, 6, 0.5, 0)
+            icn.Size = UDim2.new(0, 14, 0, 14)
+            icn.Image = id
+            icn.Parent = header
+            iconW = 22
+        end
+    end
+
+    local headerLabel = Instance.new("TextLabel")
+    headerLabel.BackgroundTransparency = 1
+    headerLabel.Position = UDim2.new(0, 6 + iconW, 0, 0)
+    headerLabel.Size = UDim2.new(1, -(6 + iconW), 1, 0)
+    headerLabel.Font = Enum.Font.RobotoMono
+    headerLabel.TextColor3 = theme.Text
+    headerLabel.TextSize = 13
+    headerLabel.TextXAlignment = Enum.TextXAlignment.Left
+    headerLabel.Parent = header
+
     local function updateHeader()
         local count = 0
         for _ in pairs(selected) do count = count + 1 end
-        if count == 0 then header.Text = string.format(" %s: None", text)
-        elseif count == #items then header.Text = string.format(" %s: All", text)
-        else header.Text = string.format(" %s: %d selected", text, count) end
+        if count == 0 then headerLabel.Text = string.format("%s: None", text)
+        elseif count == #items then headerLabel.Text = string.format("%s: All", text)
+        else headerLabel.Text = string.format("%s: %d selected", text, count) end
     end
     updateHeader()
 
@@ -2217,9 +2399,13 @@ function TabComponent:AddMultiSelectDropdown(options)
     function obj:SetEnabled(state)
         currentEnabled = state
         header.Active = state
-        header.BackgroundColor3 = state and (options.Color or theme.FrameBg)
-                                        or disabledColor(options.Color or theme.FrameBg)
-        header.TextColor3 = state and theme.Text or disabledColor(theme.Text)
+        if state then
+            header.BackgroundColor3 = options.Color or theme.FrameBg
+            headerLabel.TextColor3 = theme.Text
+        else
+            header.BackgroundColor3 = disabledColor(options.Color or theme.FrameBg)
+            headerLabel.TextColor3 = disabledColor(theme.Text)
+        end
     end
     function obj:IsEnabled() return currentEnabled end
     function obj:Destroy() container:Destroy() end
@@ -2262,20 +2448,42 @@ function TabComponent:AddMultiSelectSearchableDropdown(options)
     header.BackgroundColor3 = options.Color or theme.FrameBg
     if options.Color then warnCustomColor(self, "MultiSelectSearchableDropdown") end
     header.Size = UDim2.new(1, 0, 0, 24)
-    header.Font = Enum.Font.RobotoMono
-    header.TextColor3 = theme.Text
-    header.TextSize = 13
-    header.TextXAlignment = Enum.TextXAlignment.Left
+    header.Text = ""
     header.Parent = container
     applyCorner(header, 2)
     applyBorder(header, theme.Border)
 
+    local iconW = 0
+    if options.Icon and options.Icon ~= "" then
+        local id = Axiom.ResolveIcon(options.Icon)
+        if id and id ~= "" then
+            local icn = Instance.new("ImageLabel")
+            icn.BackgroundTransparency = 1
+            icn.AnchorPoint = Vector2.new(0, 0.5)
+            icn.Position = UDim2.new(0, 6, 0.5, 0)
+            icn.Size = UDim2.new(0, 14, 0, 14)
+            icn.Image = id
+            icn.Parent = header
+            iconW = 22
+        end
+    end
+
+    local headerLabel = Instance.new("TextLabel")
+    headerLabel.BackgroundTransparency = 1
+    headerLabel.Position = UDim2.new(0, 6 + iconW, 0, 0)
+    headerLabel.Size = UDim2.new(1, -(6 + iconW), 1, 0)
+    headerLabel.Font = Enum.Font.RobotoMono
+    headerLabel.TextColor3 = theme.Text
+    headerLabel.TextSize = 13
+    headerLabel.TextXAlignment = Enum.TextXAlignment.Left
+    headerLabel.Parent = header
+
     local function updateHeader()
         local count = 0
         for _ in pairs(selected) do count = count + 1 end
-        if count == 0 then header.Text = string.format(" %s: None", text)
-        elseif count == #items then header.Text = string.format(" %s: All", text)
-        else header.Text = string.format(" %s: %d selected", text, count) end
+        if count == 0 then headerLabel.Text = string.format("%s: None", text)
+        elseif count == #items then headerLabel.Text = string.format("%s: All", text)
+        else headerLabel.Text = string.format("%s: %d selected", text, count) end
     end
     updateHeader()
 
@@ -2427,9 +2635,13 @@ function TabComponent:AddMultiSelectSearchableDropdown(options)
     function obj:SetEnabled(state)
         currentEnabled = state
         header.Active = state
-        header.BackgroundColor3 = state and (options.Color or theme.FrameBg)
-                                        or disabledColor(options.Color or theme.FrameBg)
-        header.TextColor3 = state and theme.Text or disabledColor(theme.Text)
+        if state then
+            header.BackgroundColor3 = options.Color or theme.FrameBg
+            headerLabel.TextColor3 = theme.Text
+        else
+            header.BackgroundColor3 = disabledColor(options.Color or theme.FrameBg)
+            headerLabel.TextColor3 = disabledColor(theme.Text)
+        end
     end
     function obj:IsEnabled() return currentEnabled end
     function obj:Destroy() container:Destroy() end
@@ -2444,6 +2656,7 @@ end
 -- ════════════════════════════════════════════════════════════════════════════
 --  AddColorPicker
 -- ════════════════════════════════════════════════════════════════════════════
+
 function TabComponent:AddColorPicker(options)
     options = options or {}
     local theme = getTheme(self)
@@ -2469,14 +2682,36 @@ function TabComponent:AddColorPicker(options)
     header.BackgroundColor3 = options.Color or theme.FrameBg
     if options.Color then warnCustomColor(self, "ColorPicker") end
     header.Size = UDim2.new(1, 0, 0, 24)
-    header.Font = Enum.Font.RobotoMono
-    header.Text = " " .. text
-    header.TextColor3 = theme.Text
-    header.TextSize = 13
-    header.TextXAlignment = Enum.TextXAlignment.Left
+    header.Text = ""
     header.Parent = container
     applyCorner(header, 2)
     applyBorder(header, theme.Border)
+
+    local iconW = 0
+    if options.Icon and options.Icon ~= "" then
+        local id = Axiom.ResolveIcon(options.Icon)
+        if id and id ~= "" then
+            local icn = Instance.new("ImageLabel")
+            icn.BackgroundTransparency = 1
+            icn.AnchorPoint = Vector2.new(0, 0.5)
+            icn.Position = UDim2.new(0, 6, 0.5, 0)
+            icn.Size = UDim2.new(0, 14, 0, 14)
+            icn.Image = id
+            icn.Parent = header
+            iconW = 22
+        end
+    end
+
+    local headerLabel = Instance.new("TextLabel")
+    headerLabel.BackgroundTransparency = 1
+    headerLabel.Position = UDim2.new(0, 6 + iconW, 0, 0)
+    headerLabel.Size = UDim2.new(1, -(6 + iconW), 1, 0)
+    headerLabel.Font = Enum.Font.RobotoMono
+    headerLabel.Text = text
+    headerLabel.TextColor3 = theme.Text
+    headerLabel.TextSize = 13
+    headerLabel.TextXAlignment = Enum.TextXAlignment.Left
+    headerLabel.Parent = header
 
     local preview = Instance.new("Frame")
     preview.AnchorPoint = Vector2.new(1, 0.5)
@@ -2503,7 +2738,6 @@ function TabComponent:AddColorPicker(options)
         TweenService:Create(container, TWEEN_FAST, {Size = UDim2.new(1, 0, 0, targetHeight)}):Play()
     end)
 
-    -- ── Saturation / Value square ─────────────────────────────────────────
     local svArea = Instance.new("Frame")
     svArea.Position = UDim2.new(0, 6, 0, 6)
     svArea.Size = UDim2.new(1, -12, 0, 110)
@@ -2513,7 +2747,6 @@ function TabComponent:AddColorPicker(options)
     applyBorder(svArea, theme.Border)
     svArea.ClipsDescendants = true
 
-    -- White gradient (left = white -> right = transparent) : saturation
     local whiteOverlay = Instance.new("Frame")
     whiteOverlay.Size = UDim2.new(1, 0, 1, 0)
     whiteOverlay.BackgroundColor3 = Color3.new(1, 1, 1)
@@ -2528,7 +2761,6 @@ function TabComponent:AddColorPicker(options)
     whiteGrad.Rotation = 0
     whiteGrad.Parent = whiteOverlay
 
-    -- Black gradient (top = transparent -> bottom = black) : value
     local blackOverlay = Instance.new("Frame")
     blackOverlay.Size = UDim2.new(1, 0, 1, 0)
     blackOverlay.BackgroundColor3 = Color3.new(0, 0, 0)
@@ -2543,7 +2775,6 @@ function TabComponent:AddColorPicker(options)
     blackGrad.Rotation = 90
     blackGrad.Parent = blackOverlay
 
-    -- SV handle (circle)
     local svHandle = Instance.new("Frame")
     svHandle.AnchorPoint = Vector2.new(0.5, 0.5)
     svHandle.Position = UDim2.new(s, 0, 1 - v, 0)
@@ -2561,7 +2792,6 @@ function TabComponent:AddColorPicker(options)
     svStroke.Color = Color3.new(0, 0, 0)
     svStroke.Parent = svHandle
 
-    -- ── Hue strip ─────────────────────────────────────────────────────────
     local hueBar = Instance.new("Frame")
     hueBar.Position = UDim2.new(0, 6, 0, 122)
     hueBar.Size = UDim2.new(1, -12, 0, 12)
@@ -2597,7 +2827,6 @@ function TabComponent:AddColorPicker(options)
     hueStroke.Parent = hueHandle
     applyCorner(hueHandle, 2)
 
-    -- ── Preview swatch + hex input ────────────────────────────────────────
     local previewBox = Instance.new("Frame")
     previewBox.Position = UDim2.new(0, 6, 0, 140)
     previewBox.Size = UDim2.new(0, 26, 0, 26)
@@ -2620,7 +2849,6 @@ function TabComponent:AddColorPicker(options)
     applyCorner(hexBox, 2)
     applyBorder(hexBox, theme.Border)
 
-    -- ── Helpers / refresh ─────────────────────────────────────────────────
     local function currentColor()
         return Color3.fromHSV(h, s, v)
     end
@@ -2646,7 +2874,6 @@ function TabComponent:AddColorPicker(options)
         safeCall(currentCallback, currentColor())
     end
 
-    -- ── SV drag ───────────────────────────────────────────────────────────
     local svDragging = false
     local function svUpdate(input)
         local relX = math.clamp((input.Position.X - svArea.AbsolutePosition.X) / svArea.AbsoluteSize.X, 0, 1)
@@ -2673,7 +2900,6 @@ function TabComponent:AddColorPicker(options)
         end
     end)
 
-    -- ── Hue drag ──────────────────────────────────────────────────────────
     local hueDragging = false
     local function hueUpdate(input)
         local relX = math.clamp((input.Position.X - hueBar.AbsolutePosition.X) / hueBar.AbsoluteSize.X, 0, 1)
@@ -2698,7 +2924,6 @@ function TabComponent:AddColorPicker(options)
         end
     end)
 
-    -- ── Hex input ─────────────────────────────────────────────────────────
     hexBox.FocusLost:Connect(function()
         local txt = hexBox.Text:gsub("#", ""):gsub("%s", "")
         if #txt == 6 and txt:match("^%x+$") then
@@ -2729,9 +2954,13 @@ function TabComponent:AddColorPicker(options)
     function obj:SetEnabled(state)
         currentEnabled = state
         header.Active = state
-        header.BackgroundColor3 = state and (options.Color or theme.FrameBg)
-                                        or disabledColor(options.Color or theme.FrameBg)
-        header.TextColor3 = state and theme.Text or disabledColor(theme.Text)
+        if state then
+            header.BackgroundColor3 = options.Color or theme.FrameBg
+            headerLabel.TextColor3 = theme.Text
+        else
+            header.BackgroundColor3 = disabledColor(options.Color or theme.FrameBg)
+            headerLabel.TextColor3 = disabledColor(theme.Text)
+        end
     end
     function obj:IsEnabled() return currentEnabled end
     function obj:Destroy() container:Destroy() end
@@ -2748,6 +2977,7 @@ function TabComponent:AddColorPicker(options)
 
     return obj
 end
+
 -- ════════════════════════════════════════════════════════════════════════════
 --  AddLabel / AddSection / AddSeparator
 -- ════════════════════════════════════════════════════════════════════════════
@@ -2759,10 +2989,30 @@ function TabComponent:AddLabel(options)
     local tooltip = options.Tooltip
     if options.Color then warnCustomColor(self, "Label") end
 
+    local wrapper = Instance.new("Frame")
+    wrapper.BackgroundTransparency = 1
+    wrapper.Size = UDim2.new(1, 0, 0, 0)
+    wrapper.LayoutOrder = self:_nextOrder()
+    wrapper.Parent = self._page
+
+    local iconW = 0
+    if options.Icon and options.Icon ~= "" then
+        local id = Axiom.ResolveIcon(options.Icon)
+        if id and id ~= "" then
+            local icn = Instance.new("ImageLabel")
+            icn.BackgroundTransparency = 1
+            icn.Position = UDim2.new(0, 0, 0, 2)
+            icn.Size = UDim2.new(0, 14, 0, 14)
+            icn.Image = id
+            icn.Parent = wrapper
+            iconW = 18
+        end
+    end
+
     local lbl = Instance.new("TextLabel")
     lbl.BackgroundTransparency = 1
-    lbl.Size = UDim2.new(1, 0, 0, 0)
-    lbl.LayoutOrder = self:_nextOrder()
+    lbl.Position = UDim2.new(0, iconW, 0, 0)
+    lbl.Size = UDim2.new(1, -iconW, 0, 0)
     lbl.Font = Enum.Font.RobotoMono
     lbl.Text = text
     lbl.TextColor3 = options.Color or theme.Text
@@ -2770,19 +3020,23 @@ function TabComponent:AddLabel(options)
     lbl.TextXAlignment = Enum.TextXAlignment.Left
     lbl.TextWrapped = true
     lbl.RichText = true
-    lbl.Parent = self._page
+    lbl.Parent = wrapper
 
-    lbl:GetPropertyChangedSignal("TextBounds"):Connect(function()
-        lbl.Size = UDim2.new(1, 0, 0, lbl.TextBounds.Y + 2)
-    end)
+    local function syncSize()
+        local h = lbl.TextBounds.Y + 2
+        lbl.Size = UDim2.new(1, -iconW, 0, h)
+        wrapper.Size = UDim2.new(1, 0, 0, h)
+    end
+    lbl:GetPropertyChangedSignal("TextBounds"):Connect(syncSize)
 
-    if tooltip then attachTooltip(lbl, tooltip, self._window) end
-    if self._window then self._window:_registerSearch(lbl, text) end
+    if tooltip then attachTooltip(wrapper, tooltip, self._window) end
+    if self._window then self._window:_registerSearch(wrapper, text) end
 
     local obj = {}
     function obj:SetText(t) lbl.Text = t end
     function obj:GetText() return lbl.Text end
-    function obj:Destroy() lbl:Destroy() end
+    function obj:Destroy() wrapper:Destroy() end
+    function obj:GetInstance() return wrapper end
     return obj
 end
 
@@ -2836,9 +3090,25 @@ function TabComponent:AddTextBox(options)
     row.LayoutOrder = self:_nextOrder()
     row.Parent = self._page
 
+    local iconW = 0
+    if options.Icon and options.Icon ~= "" then
+        local id = Axiom.ResolveIcon(options.Icon)
+        if id and id ~= "" then
+            local icn = Instance.new("ImageLabel")
+            icn.BackgroundTransparency = 1
+            icn.AnchorPoint = Vector2.new(0, 0.5)
+            icn.Position = UDim2.new(0, 4, 0.5, 0)
+            icn.Size = UDim2.new(0, 16, 0, 16)
+            icn.Image = id
+            icn.Parent = row
+            iconW = 22
+        end
+    end
+
     local lbl = Instance.new("TextLabel")
     lbl.BackgroundTransparency = 1
     local lblWidth = (text ~= "") and (TextService:GetTextSize(text .. ":", 13, Enum.Font.RobotoMono, Vector2.new(999, 24)).X + 4) or 0
+    lbl.Position = UDim2.new(0, iconW, 0, 0)
     lbl.Size = UDim2.new(0, lblWidth, 1, 0)
     lbl.Font = Enum.Font.RobotoMono
     lbl.Text = text .. ":"
@@ -2850,8 +3120,8 @@ function TabComponent:AddTextBox(options)
     local box = Instance.new("TextBox")
     box.BackgroundColor3 = options.Color or theme.FrameBg
     if options.Color then warnCustomColor(self, "TextBox") end
-    box.Position = UDim2.new(0, lblWidth + 4, 0, 0)
-    box.Size = UDim2.new(1, -(lblWidth + 4), 1, 0)
+    box.Position = UDim2.new(0, iconW + lblWidth + 4, 0, 0)
+    box.Size = UDim2.new(1, -(iconW + lblWidth + 4), 1, 0)
     box.Font = Enum.Font.RobotoMono
     box.PlaceholderText = placeholder or ""
     box.PlaceholderColor3 = theme.SubText
@@ -3795,13 +4065,7 @@ function TabComponent:AddImage(options)
     options = options or {}
     local theme = getTheme(self)
 
-    local imageId = options.Image
-    if type(imageId) == "number" then
-        imageId = "rbxassetid://" .. tostring(imageId)
-    elseif type(imageId) == "string" and tonumber(imageId) then
-        imageId = "rbxassetid://" .. imageId
-    end
-    imageId = imageId or ""
+    local imageId = Axiom.ResolveIcon(options.Image) or ""
 
     local container = Instance.new("Frame")
     container.BackgroundTransparency = 1
@@ -3823,8 +4087,7 @@ function TabComponent:AddImage(options)
 
     local obj = {}
     function obj:SetImage(id)
-        if type(id) == "number" then id = "rbxassetid://" .. tostring(id) end
-        imgLabel.Image = id
+        imgLabel.Image = Axiom.ResolveIcon(id)
     end
     function obj:GetImage() return imgLabel.Image end
     function obj:Update(opts)
@@ -4404,7 +4667,7 @@ function Axiom:CreateWatermark(options)
         icon.BackgroundTransparency = 1
         icon.Size = UDim2.new(0, 20, 0, 20)
         icon.Position = UDim2.new(0, 4, 0.5, -10)
-        icon.Image = options.Icon
+        icon.Image = Axiom.ResolveIcon(options.Icon)
         icon.Parent = wmFrame
     end
 
@@ -4446,7 +4709,7 @@ function Axiom:CreateWatermark(options)
                     icon = Instance.new("ImageLabel"); icon.BackgroundTransparency = 1; icon.Size = UDim2.new(0, 20, 0, 20); icon.Position = UDim2.new(0, 4, 0.5, -10); icon.Parent = wmFrame
                     wmLabel.Position = UDim2.new(0, 28, 0, 0); wmLabel.Size = UDim2.new(1, -32, 1, 0)
                 end
-                icon.Image = newOptions.Icon
+                icon.Image = Axiom.ResolveIcon(newOptions.Icon)
             end
         end
         if newOptions.TextColor then wmLabel.TextColor3 = newOptions.TextColor end
@@ -4662,7 +4925,7 @@ function Axiom:CreateKeySystem(config)
         icon.BackgroundTransparency = 1
         icon.Size     = UDim2.new(0, 20, 0, 20)
         icon.Position = UDim2.new(0, 4, 0.5, -10)
-        icon.Image    = config.Icon
+        icon.Image    = Axiom.ResolveIcon(config.Icon)
         icon.Parent   = titleBar
         titleLbl.Position = UDim2.new(0, 28, 0, 0)
         titleLbl.Size     = UDim2.new(1, -52, 1, 0)
@@ -5134,9 +5397,6 @@ function Axiom:CreateKeySystem(config)
     return keySys
 end
 
-function Axiom:IsPremium() return self._isPremium == true end
-function Axiom:GetTier()   return self._tier or "Free" end
-
 -- ════════════════════════════════════════════════════════════════════════════
 --  Notifications
 -- ════════════════════════════════════════════════════════════════════════════
@@ -5502,46 +5762,131 @@ function Axiom:SetTheme(newTheme)
     if newTheme then for k, v in pairs(newTheme) do merged[k] = v end end
     self._theme = merged
 
-    local oldMap = {}
-    for key, col in pairs(oldTheme) do
-        if typeof(col) == "Color3" then oldMap[col] = key end
+    -- ── 1. Apply explicit bindings first (titlebars, etc.) ────────────────
+    if self._themeBindings then
+        for instance, props in pairs(self._themeBindings) do
+            if instance.Parent then
+                for prop, key in pairs(props) do
+                    if merged[key] ~= nil then
+                        instance[prop] = merged[key]
+                    end
+                end
+            else
+                self._themeBindings[instance] = nil
+            end
+        end
+    end
+
+    -- ── 2. Color-scan every Axiom-owned GUI for the rest ─────────────────
+    -- Group only keys whose value ACTUALLY changed, keyed by their OLD color
+    local changedByColor = {}
+    for key, oldCol in pairs(oldTheme) do
+        if typeof(oldCol) == "Color3" then
+            local newCol = merged[key]
+            if newCol and typeof(newCol) == "Color3" and newCol ~= oldCol then
+                if not changedByColor[oldCol] then changedByColor[oldCol] = {} end
+                table.insert(changedByColor[oldCol], key)
+            end
+        end
+    end
+
+    -- Disambiguation priority when multiple keys shared an old color
+    local PRIORITY = {
+        TitleBg = 1, Accent = 2, AccentHover = 3, Border = 4,
+        WindowBg = 5, FrameBg = 6, FrameBgHover = 7,
+        TabActive = 8, TabBarBg = 9, TabNormal = 10,
+        SliderFill = 11, SliderTrack = 12,
+        CheckOn = 13, CheckOff = 14,
+        GraphBg = 15, GraphLine = 16,
+        NotifyBg = 17, NotifyTitle = 18, NotifyMsg = 19,
+        Text = 20, SubText = 21,
+        TabNormalText = 22, TabActiveText = 23,
+    }
+
+    local function resolveColor(oldCol)
+        if typeof(oldCol) ~= "Color3" then return oldCol end
+        local keys = changedByColor[oldCol]
+        if not keys or #keys == 0 then return oldCol end
+        if #keys == 1 then return merged[keys[1]] end
+        table.sort(keys, function(a, b)
+            return (PRIORITY[a] or 99) < (PRIORITY[b] or 99)
+        end)
+        return merged[keys[1]]
     end
 
     local function scan(instance)
+        if not (instance and instance.Parent) then return end
         if instance:IsA("GuiObject") then
-            local key = oldMap[instance.BackgroundColor3]
-            if key and merged[key] then instance.BackgroundColor3 = merged[key] end
+            local nb = resolveColor(instance.BackgroundColor3)
+            if nb ~= instance.BackgroundColor3 then instance.BackgroundColor3 = nb end
             if instance:IsA("TextLabel") or instance:IsA("TextButton") or instance:IsA("TextBox") then
-                local txtKey = oldMap[instance.TextColor3]
-                if txtKey and merged[txtKey] then instance.TextColor3 = merged[txtKey] end
+                local nt = resolveColor(instance.TextColor3)
+                if nt ~= instance.TextColor3 then instance.TextColor3 = nt end
             end
             if instance:IsA("TextBox") then
-                local phKey = oldMap[instance.PlaceholderColor3]
-                if phKey and merged[phKey] then instance.PlaceholderColor3 = merged[phKey] end
+                local np = resolveColor(instance.PlaceholderColor3)
+                if np ~= instance.PlaceholderColor3 then instance.PlaceholderColor3 = np end
+            end
+            if instance:IsA("ImageLabel") or instance:IsA("ImageButton") then
+                local ni = resolveColor(instance.ImageColor3)
+                if ni ~= instance.ImageColor3 then instance.ImageColor3 = ni end
             end
             local stroke = instance:FindFirstChildOfClass("UIStroke")
             if stroke then
-                local strokeKey = oldMap[stroke.Color]
-                if strokeKey and merged[strokeKey] then stroke.Color = merged[strokeKey] end
+                local ns = resolveColor(stroke.Color)
+                if ns ~= stroke.Color then stroke.Color = ns end
             end
         end
         for _, child in ipairs(instance:GetChildren()) do scan(child) end
     end
 
-    if self._mainFrame then scan(self._mainFrame) end
+    -- Every Axiom-owned root GUI
+    if self._screen         then scan(self._screen)         end
+    if self._notificationGui then scan(self._notificationGui) end
+    if self._keySystemGui   then scan(self._keySystemGui)   end
+    if tooltipGui           then scan(tooltipGui)           end
+    if self._watermark and self._watermark._gui then
+        scan(self._watermark._gui)
+    end
+
+    -- Every target window's ScreenGui
+    if self._targetWindows then
+        for _, tw in ipairs(self._targetWindows) do
+            if tw and tw._chrome and not tw._destroyed then
+                local ok, scr = pcall(function() return tw._chrome:GetScreen() end)
+                if ok and scr and scr.Parent then
+                    scan(scr)
+                end
+            end
+        end
+    end
 end
 
-Axiom.Lucide = nil
-function Axiom:LoadLucide()
-    if not Axiom.Lucide then
-        local ok, result = pcall(function()
-            return loadstring(game:HttpGet(
-                "https://raw.githubusercontent.com/xxpwnxxx420lord/Lucide.Lua/refs/heads/main/lucide.lua"
-            ))()
-        end)
-        if ok then Axiom.Lucide = result end
+function Axiom:_bindTheme(instance, props)
+    if not instance then return end
+    if not self._themeBindings then
+        self._themeBindings = setmetatable({}, {__mode = "k"})
     end
-    return Axiom.Lucide
+    if not self._themeBindings[instance] then
+        self._themeBindings[instance] = {}
+    end
+    for prop, key in pairs(props) do
+        self._themeBindings[instance][prop] = key
+        if self._theme[key] ~= nil then
+            instance[prop] = self._theme[key]
+        end
+    end
+end
+
+Axiom.Lucide = Axiom.IconPack
+function Axiom:LoadLucide() return Axiom.IconPack end
+function Axiom:GetLucideIcon(name, options)
+    options = options or {}
+    local id = Axiom.ResolveIcon(name)
+    if not id then return nil end
+    return { Image = id,
+             ImageRectOffset = options.ImageRectOffset or Vector2.zero,
+             ImageRectSize   = options.ImageRectSize   or Vector2.zero }
 end
 
 function Axiom:GetLucideIcon(name, options)
@@ -5763,10 +6108,25 @@ function TabComponent:AddRadioButton(options)
     dotInner.Parent = circle
     local dic = Instance.new("UICorner"); dic.CornerRadius = UDim.new(1, 0); dic.Parent = dotInner
 
+    local iconW = 0
+    if options.Icon and options.Icon ~= "" then
+        local id = Axiom.ResolveIcon(options.Icon)
+        if id and id ~= "" then
+            local icn = Instance.new("ImageLabel")
+            icn.BackgroundTransparency = 1
+            icn.AnchorPoint = Vector2.new(0, 0.5)
+            icn.Position = UDim2.new(0, 24, 0.5, 0)
+            icn.Size = UDim2.new(0, 16, 0, 16)
+            icn.Image = id
+            icn.Parent = row
+            iconW = 20
+        end
+    end
+
     local lbl = Instance.new("TextLabel")
     lbl.BackgroundTransparency = 1
-    lbl.Position = UDim2.new(0, 24, 0, 0)
-    lbl.Size = UDim2.new(1, -24, 1, 0)
+    lbl.Position = UDim2.new(0, 24 + iconW, 0, 0)
+    lbl.Size = UDim2.new(1, -(24 + iconW), 1, 0)
     lbl.Font = Enum.Font.RobotoMono
     lbl.Text = text
     lbl.TextColor3 = theme.Text
@@ -5858,7 +6218,7 @@ function TabComponent:AddSelectable(options)
     local theme = getTheme(self)
 
     local text     = options.Text or "Item"
-    local group    = options.Group   -- optional: mutual exclusion group
+    local group    = options.Group
     local default  = options.Default or false
     local callback = options.Callback
     local onRight  = options.OnRightClick
@@ -5889,10 +6249,26 @@ function TabComponent:AddSelectable(options)
 
     if selected then row.BackgroundColor3 = theme.TabActive end
 
+    local iconW = 0
+    local iconImg
+    if options.Icon and options.Icon ~= "" then
+        local id = Axiom.ResolveIcon(options.Icon)
+        if id and id ~= "" then
+            iconImg = Instance.new("ImageLabel")
+            iconImg.BackgroundTransparency = 1
+            iconImg.AnchorPoint = Vector2.new(0, 0.5)
+            iconImg.Position = UDim2.new(0, 6, 0.5, 0)
+            iconImg.Size = UDim2.new(0, 16, 0, 16)
+            iconImg.Image = id
+            iconImg.Parent = row
+            iconW = 20
+        end
+    end
+
     local lbl = Instance.new("TextLabel")
     lbl.BackgroundTransparency = 1
-    lbl.Position = UDim2.new(0, 6, 0, 0)
-    lbl.Size = UDim2.new(1, -12, 1, 0)
+    lbl.Position = UDim2.new(0, 6 + iconW, 0, 0)
+    lbl.Size = UDim2.new(1, -(12 + iconW), 1, 0)
     lbl.Font = Enum.Font.RobotoMono
     lbl.Text = text
     lbl.TextColor3 = selected and theme.TabActiveText or theme.Text
@@ -6325,8 +6701,7 @@ function TabComponent:AddImageButton(options)
     options = options or {}
     local theme = getTheme(self)
 
-    local imageId = options.Image
-    if type(imageId) == "number" then imageId = "rbxassetid://" .. imageId end
+    local imageId  = Axiom.ResolveIcon(options.Image)
     local text     = options.Text
     local callback = options.Callback
     local tooltip  = options.Tooltip
@@ -6381,8 +6756,7 @@ function TabComponent:AddImageButton(options)
 
     local obj = {}
     function obj:SetImage(id)
-        if type(id) == "number" then id = "rbxassetid://" .. id end
-        img.Image = id
+        img.Image = Axiom.ResolveIcon(id)
     end
     function obj:SetText(t)
         if lbl then lbl.Text = t end
@@ -6686,6 +7060,7 @@ function Axiom:CreateTargetWindow(options)
 
     local chrome = Axiom._Internal.CreateWindowChrome({
         Theme     = theme,
+        Owner     = owner,
         Parent    = CoreGui,
         Title     = title,
         Icon      = options.Icon,
